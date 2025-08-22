@@ -9,6 +9,15 @@
 // D9 - Speaker output
 // D10 - Speaker output
 // D6 - LED output
+// D12 - SPI MISO
+// D11 - SPI MOSI
+// D13 - SPI SCK
+// D7 - RF24 CE
+// D8 - RF24 CSN
+// D2 - PTT button
+// D3 - Encoder A
+// D4 - Encoder B
+// D5 - Encoder switch
 
 #define PTT_BUTTON_PIN 2
 #define ENCODER_A_PIN 3
