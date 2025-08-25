@@ -3,6 +3,7 @@
 .pio
 .vscode
 unused
+*.FCBak
 
 ### macOS ###
 # General
