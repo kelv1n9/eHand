@@ -1,3 +1,51 @@
+/*
+Controls:
+
+- PTT hold ............ TX mode (LED ON)
+- PTT release ......... RX mode (LED blink/VU)
+
+- Encoder turn ........ Volume (0–7)
+- Encoder press+turn .. Channel (100–115)
+- Encoder click ....... Data Rate (250k/1M/2M)
+- Enc turn+PTT hold.... TX Power (MIN/LOW/HIGH/MAX)
+
+LED Indication Map:
+
+TX Power (PTT + Encoder turn)
+-------------------------------
+- MIN  .......... 1 short flash
+- LOW  .......... 2 short flashes
+- HIGH .......... 3 short flashes
+- MAX  .......... 1 long flash
+
+Data Rate (Encoder click)
+----------------------------
+- 250 kbps ...... 1 slow flash
+- 1 Mbps  ....... 2 medium flashes
+- 2 Mbps  ....... 3 fast flashes
+
+Channel (Encoder press + turn)
+--------------------------------
+Binary code, 4 flashes (short=0, long=1):
+
+100 (0)  .... short short short short
+101 (1)  .... long  short short short
+102 (2)  .... short long  short short
+103 (3)  .... long  long  short short
+104 (4)  .... short short long  short
+105 (5)  .... long  short long  short
+106 (6)  .... short long  long  short
+107 (7)  .... long  long  long  short
+108 (8)  .... short short short long
+109 (9)  .... long  short short long
+110 (10) .... short long  short long
+111 (11) .... long  long  short long
+112 (12) .... short short long  long
+113 (13) .... long  short long  long
+114 (14) .... short long  long  long
+115 (15) .... long  long  long  long
+*/
+
 #include <RF24.h>
 #include <RF24Audio.h>
 #include "EncButton.h"
@@ -37,6 +85,13 @@
 #define NAME "eHand"
 #define VERSION "1.0.0"
 
+#define LED_SHORT 200
+#define LED_LONG 600
+#define LED_PAUSE 200
+#define LED_END 1000
+
+#define LED_PIN 6
+
 #define PTT_BUTTON_PIN 2
 #define ENCODER_A_PIN 3
 #define ENCODER_B_PIN 4
@@ -46,7 +101,7 @@
 #define CE_PIN 7
 
 #define CHANNEL_START 100
-#define CHANNEL_COUNT 10
+#define CHANNEL_COUNT 16
 #define CH_MIN (CHANNEL_START)
 #define CH_MAX (CHANNEL_START + CHANNEL_COUNT - 1)
 
@@ -75,6 +130,100 @@ uint8_t channel = CHANNEL_START;
 uint8_t volume = 4;
 uint8_t dataRateIdx = 1;
 uint8_t txPowerIdx = 2;
+
+int blinkType = -1;
+int blinkValue;
+uint32_t blinkStart;
+uint32_t lastPowerTurnMs;
+bool suppressLedDuringPower;
+
+void blinkPower(uint8_t level)
+{
+  switch (level)
+  {
+  case 0: // MIN
+    digitalWrite(LED_PIN, HIGH);
+    delay(LED_SHORT);
+    digitalWrite(LED_PIN, LOW);
+    delay(LED_END);
+    break;
+  case 1: // LOW
+    for (int i = 0; i < 2; i++)
+    {
+      digitalWrite(LED_PIN, HIGH);
+      delay(LED_SHORT);
+      digitalWrite(LED_PIN, LOW);
+      delay(LED_PAUSE);
+    }
+    delay(LED_END);
+    break;
+  case 2: // HIGH
+    for (int i = 0; i < 3; i++)
+    {
+      digitalWrite(LED_PIN, HIGH);
+      delay(LED_SHORT);
+      digitalWrite(LED_PIN, LOW);
+      delay(LED_PAUSE);
+    }
+    delay(LED_END);
+    break;
+  case 3: // MAX
+    digitalWrite(LED_PIN, HIGH);
+    delay(LED_LONG);
+    digitalWrite(LED_PIN, LOW);
+    delay(LED_END);
+    break;
+  }
+}
+
+void blinkRate(uint8_t rate)
+{
+  // 0=250kbps, 1=1Mbps, 2=2Mbps
+  int count = rate + 1;
+  int dur = (rate == 0 ? 600 : (rate == 1 ? 300 : 150)); // slow / medium / fast
+  for (int i = 0; i < count; i++)
+  {
+    digitalWrite(LED_PIN, HIGH);
+    delay(dur);
+    digitalWrite(LED_PIN, LOW);
+    delay(dur);
+  }
+  delay(LED_END);
+}
+
+void blinkChannel(uint8_t ch)
+{
+  for (int i = 3; i >= 0; --i)
+  {
+    bool bit = (ch >> i) & 0x01;
+    digitalWrite(LED_PIN, HIGH);
+    delay(bit ? LED_LONG : LED_SHORT);
+    digitalWrite(LED_PIN, LOW);
+    delay(LED_PAUSE);
+  }
+  delay(LED_END);
+}
+
+void onPowerChanged(uint8_t level)
+{
+  blinkStart = millis();
+  blinkType = 0;
+  blinkValue = level;
+}
+
+void onRateChanged(uint8_t rate)
+{
+  blinkStart = millis();
+  blinkType = 1;
+  blinkValue = rate;
+}
+
+void onChannelChanged(uint8_t ch)
+{
+  blinkStart = millis();
+  blinkType = 2;
+  blinkValue = ch;
+}
 
 void applyChannel()
 {
@@ -179,6 +328,8 @@ void setup()
   printf_begin();
   delay(1000);
 #endif
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
 
   radio.begin();
   rfAudio.begin();
@@ -197,88 +348,146 @@ void setup()
 
 void loop()
 {
+  static bool ledState;
+  static uint32_t blinkTimer;
+
   encoder.tick();
   PTT.tick();
 
-  if (PTT.pressing())
+  // Power toggle when encoder turned while PTT held
+  if (PTT.pressing() && encoder.turn())
   {
-    // Power toggle when encoder turned while PTT held
-    if (encoder.turn())
+    if (isTx && !suppressLedDuringPower)
     {
-      int step = (encoder.fast() ? 2 : 1) * encoder.dir();
-      int idx = (int)txPowerIdx + (step > 0 ? 1 : -1);
-      if (idx < 0)
-        idx = 3;
-      if (idx > 3)
-        idx = 0;
-      txPowerIdx = (uint8_t)idx;
-      config.txPowerIdx = txPowerIdx;
-      applyTxPower();
-      markConfigEdited();
-      DBG("TxPowerIdx: %u\n", txPowerIdx);
+      digitalWrite(LED_PIN, LOW);
+      suppressLedDuringPower = true;
+      lastPowerTurnMs = millis();
     }
-    // Transmit while PTT held
-    if (PTT.press() && !isTx)
-    {
-      rfAudio.transmit();
-      isTx = true;
-      DBG("Transmitting...\n");
-    }
+
+    int step = (encoder.fast() ? 2 : 1) * encoder.dir();
+    int idx = (int)txPowerIdx + (step > 0 ? 1 : -1);
+    if (idx < 0)
+      idx = 3;
+    if (idx > 3)
+      idx = 0;
+    txPowerIdx = (uint8_t)idx;
+    config.txPowerIdx = txPowerIdx;
+    applyTxPower();
+    onPowerChanged(txPowerIdx);
+    markConfigEdited();
+    DBG("TxPowerIdx: %u\n", txPowerIdx);
   }
-  else
+  else if (!PTT.pressing() && encoder.turn())
   {
-    if (encoder.turn())
-    {
-      int step = (encoder.fast() ? 2 : 1) * encoder.dir();
+    int step = (encoder.fast() ? 2 : 1) * encoder.dir();
 
-      // Change channel when encoder pressed and turned
-      if (encoder.pressing())
-      {
-        int new_channel = (int)channel + step;
-        if (new_channel < CH_MIN)
-          new_channel = CH_MAX;
-        if (new_channel > CH_MAX)
-          new_channel = CH_MIN;
-        channel = (uint8_t)new_channel;
-        config.channel = channel;
-        applyChannel();
-        markConfigEdited();
-        DBG("Channel: %u\n", channel);
-      }
-      // Change volume when encoder turned
-      else
-      {
-        int new_volume = (int)volume + step;
-        if (new_volume < 0)
-          new_volume = 0;
-        if (new_volume > 7)
-          new_volume = 7;
-        volume = (uint8_t)new_volume;
-        config.volume = volume;
-        applyVolume();
-        markConfigEdited();
-        DBG("Volume: %u\n", volume);
-      }
-    }
-
-    // Change rate on encoder click
-    if (encoder.click())
+    // Channel toggle when encoder pressed and turned
+    if (encoder.pressing())
     {
-      dataRateIdx = (dataRateIdx + 1) % 3;
-      config.dataRateIdx = dataRateIdx;
-      applyDataRate();
+      int new_channel = (int)channel + step;
+      if (new_channel < CH_MIN)
+        new_channel = CH_MAX;
+      if (new_channel > CH_MAX)
+        new_channel = CH_MIN;
+      channel = (uint8_t)new_channel;
+      config.channel = channel;
+      applyChannel();
+      onChannelChanged(channel);
       markConfigEdited();
-      DBG("dataRateIdx: %u\n", dataRateIdx);
+      DBG("Channel: %u\n", channel);
+    }
+    // Volume toggle when encoder turned
+    else
+    {
+      int new_volume = (int)volume + step;
+      if (new_volume < 0)
+        new_volume = 0;
+      if (new_volume > 7)
+        new_volume = 7;
+      volume = (uint8_t)new_volume;
+      config.volume = volume;
+      applyVolume();
+      markConfigEdited();
+      DBG("Volume: %u\n", volume);
     }
   }
 
-  // Stop transmitting when PTT released
+  // Rate toggle on encoder click
+  if (encoder.click())
+  {
+    dataRateIdx = (dataRateIdx + 1) % 3;
+    config.dataRateIdx = dataRateIdx;
+    applyDataRate();
+    onRateChanged(dataRateIdx);
+    markConfigEdited();
+    DBG("dataRateIdx: %u\n", dataRateIdx);
+  }
+
+  // Start Transmitting while PTT hold
+  if (PTT.press() && !isTx)
+  {
+    rfAudio.transmit();
+    digitalWrite(LED_PIN, HIGH);
+    isTx = true;
+    DBG("Transmitting...\n");
+  }
+  // Stop Transmitting when PTT released
   if (PTT.release() && isTx)
   {
+    digitalWrite(LED_PIN, LOW);
     rfAudio.receive();
     isTx = false;
+    suppressLedDuringPower = false;
     DBG("Receiving...\n");
   }
 
+  // Blink LED when radio is waiting
+  if (!isTx)
+  {
+    if (!(TCCR0A & _BV(COM0A1)))
+    {
+      if (millis() - blinkTimer >= 2000)
+      {
+        ledState = !ledState;
+        digitalWrite(LED_PIN, ledState);
+        blinkTimer = millis();
+      }
+    }
+  }
+
+  // Handle LED indication after setting changes
+  if (blinkType != -1 && millis() - blinkStart >= 1000)
+  {
+    bool vuActive = (TCCR0A & _BV(COM0A1));
+    if (vuActive)
+    {
+      TCCR0A &= ~_BV(COM0A1);
+    }
+
+    switch (blinkType)
+    {
+    case 0:
+      blinkPower(blinkValue);
+      break;
+    case 1:
+      blinkRate(blinkValue);
+      break;
+    case 2:
+      blinkChannel(blinkValue - 100);
+      break;
+    }
+
+    if (vuActive)
+    {
+      TCCR0A |= _BV(COM0A1);
+    }
+    blinkType = -1;
+  }
+
+  if (isTx && suppressLedDuringPower && (millis() - lastPowerTurnMs >= 1000))
+  {
+    digitalWrite(LED_PIN, HIGH);
+    suppressLedDuringPower = false;
+  }
   saveSettings();
 }
