@@ -34,6 +34,9 @@
 // D4 - Encoder B
 // D5 - Encoder switch
 
+#define NAME "eHand"
+#define VERSION "1.0.0"
+
 #define PTT_BUTTON_PIN 2
 #define ENCODER_A_PIN 3
 #define ENCODER_B_PIN 4
@@ -71,7 +74,7 @@ bool isTx = false;
 uint8_t channel = CHANNEL_START;
 uint8_t volume = 4;
 uint8_t dataRateIdx = 1;
-uint8_t txPowerIdx = 3;
+uint8_t txPowerIdx = 2;
 
 void applyChannel()
 {
@@ -84,12 +87,15 @@ void applyDataRate()
   {
   case 0:
     radio.setDataRate(RF24_250KBPS);
+    DBG("Set data rate: 250kbps\n");
     break;
   case 1:
     radio.setDataRate(RF24_1MBPS);
+    DBG("Set data rate: 1Mbps\n");
     break;
   case 2:
     radio.setDataRate(RF24_2MBPS);
+    DBG("Set data rate: 2Mbps\n");
     break;
   }
 }
@@ -100,15 +106,19 @@ void applyTxPower()
   {
   case 0:
     radio.setPALevel(RF24_PA_MIN);
+    DBG("Set Tx Power: MIN\n");
     break;
   case 1:
     radio.setPALevel(RF24_PA_LOW);
+    DBG("Set Tx Power: LOW\n");
     break;
   case 2:
     radio.setPALevel(RF24_PA_HIGH);
+    DBG("Set Tx Power: HIGH\n");
     break;
   case 3:
     radio.setPALevel(RF24_PA_MAX);
+    DBG("Set Tx Power: MAX\n");
     break;
   }
 }
@@ -158,6 +168,7 @@ void saveSettings()
   {
     EEPROM.put(0, config);
     isConfigEdited = false;
+    DBG("Settings saved to EEPROM\n");
   }
 }
 
