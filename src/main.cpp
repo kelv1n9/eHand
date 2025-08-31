@@ -50,6 +50,7 @@ Binary code, 4 flashes (short=0, long=1):
 #include <RF24Audio.h>
 #include "EncButton.h"
 #include <EEPROM.h>
+#include <Vcc.h>
 
 #define DEBUG_eHand
 
@@ -125,6 +126,9 @@ EncButton encoder(ENCODER_A_PIN, ENCODER_B_PIN, ENCODER_SWITCH_PIN);
 RF24 radio(CE_PIN, CSN_PIN);
 RF24Audio rfAudio(radio, 0);
 
+const float VccCorrection = 1.0/1.0; // Measured Vcc by multimeter / V by reported Vcc
+Vcc vcc(VccCorrection);
+
 bool isTx = false;
 uint8_t channel = CHANNEL_START;
 uint8_t volume = 4;
@@ -136,6 +140,18 @@ int blinkValue;
 uint32_t blinkStart;
 uint32_t lastPowerTurnMs;
 bool suppressLedDuringPower;
+
+void rogerBeep() {
+  // uint8_t _t1a = TCCR1A, _timsk1 = TIMSK1;
+  // TIMSK1 = 0;
+  // TCCR1A &= ~(_BV(COM1A1) | _BV(COM1B1) | _BV(COM1B0));
+
+  tone(9, 880, 60);  
+  delay(80);
+  tone(9, 660, 80); 
+  delay(100);
+  noTone(9);
+}
 
 void blinkPower(uint8_t level)
 {
@@ -321,6 +337,14 @@ void saveSettings()
   }
 }
 
+float readBatteryVoltage()
+{
+  float volts = vcc.Read_Volts();
+  DBG("Battery: %f V\n", volts);
+
+  return volts;
+}
+
 void setup()
 {
 #ifdef DEBUG_eHand
@@ -435,6 +459,7 @@ void loop()
   if (PTT.release() && isTx)
   {
     digitalWrite(LED_PIN, LOW);
+    rogerBeep(); //! Test function
     rfAudio.receive();
     isTx = false;
     suppressLedDuringPower = false;
@@ -448,8 +473,23 @@ void loop()
     {
       if (millis() - blinkTimer >= 2000)
       {
-        ledState = !ledState;
-        digitalWrite(LED_PIN, ledState);
+        bool lowBat = (readBatteryVoltage() <= 3.7);
+        if (lowBat)
+        {
+          digitalWrite(LED_PIN, HIGH);
+          delay(120);
+          digitalWrite(LED_PIN, LOW);
+          delay(180);
+          digitalWrite(LED_PIN, HIGH);
+          delay(120);
+          digitalWrite(LED_PIN, LOW);
+        }
+        else
+        {
+          digitalWrite(LED_PIN, HIGH);
+          delay(120);
+          digitalWrite(LED_PIN, LOW);
+        }
         blinkTimer = millis();
       }
     }
