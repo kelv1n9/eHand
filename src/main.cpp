@@ -340,7 +340,7 @@ void saveSettings()
 float readBatteryVoltage()
 {
   float volts = vcc.Read_Volts();
-  DBG("Battery: %f V\n", volts);
+  DBG("Battery: %.2f V\n", (double)volts);
 
   return volts;
 }
@@ -372,7 +372,6 @@ void setup()
 
 void loop()
 {
-  static bool ledState;
   static uint32_t blinkTimer;
 
   encoder.tick();
