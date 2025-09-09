@@ -41,6 +41,9 @@ void loop()
   encoder.tick();
   PTT.tick();
 
+  uint32_t now = millis();
+  static uint32_t nextBlinkAt;
+
   // Power toggle when encoder turned while PTT held
   if (PTT.pressing() && encoder.turn())
   {
@@ -120,9 +123,6 @@ void loop()
     isTx = false;
     DBG("Receiving...\n");
   }
-
-  uint32_t now = millis();
-  static uint32_t nextBlinkAt;
 
   // Blink LED when radio is waiting
   if (now >= nextBlinkAt && !blinker.active() && !isTx)

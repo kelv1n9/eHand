@@ -6,8 +6,6 @@
 #include <EEPROM.h>
 #include <Vcc.h>
 
-Vcc vcc(1);
-
 // #define DEBUG_eHand
 
 #ifdef DEBUG_eHand
@@ -23,44 +21,53 @@ Vcc vcc(1);
     {            \
     } while (0)
 #endif
+/* 
 
-// Pin definitions
-// A0 - Microphone input
-// D9 - Speaker output
-// D10 - Speaker output
-// D6 - LED output
-// D12 - SPI MISO
-// D11 - SPI MOSI
-// D13 - SPI SCK
-// D7 - RF24 CE
-// D8 - RF24 CSN
-// D2 - PTT button
-// D3 - Encoder B
-// D4 - Encoder A
-// D5 - Encoder switch
+Pin definitions
+A0 - Microphone input
+D9 - Speaker output
+D10 - Speaker output
+D6 - LED output
+D12 - SPI MISO
+D11 - SPI MOSI
+D13 - SPI SCK
+D7 - RF24 CE
+D8 - RF24 CSN
+D2 - PTT button
+D3 - Encoder B
+D4 - Encoder A
+D5 - Encoder switch
+
+*/ 
 
 #define NAME "eHand"
 #define VERSION "1.0.0"
 
-#define LOW_BATT_VOLT 3.8
-#define BATT_SAMPLE_MS 20000
-#define LED_BLINK_MS 10000
-
+// PINS
 #define LED_PIN 6
-
 #define PTT_BUTTON_PIN 2
 #define ENCODER_A_PIN 4
 #define ENCODER_B_PIN 3
 #define ENCODER_SWITCH_PIN 5
-
 #define CSN_PIN 8
 #define CE_PIN 7
+
+// CONSTANTS
+#define LOW_BATT_VOLT 3.8
+#define BATT_SAMPLE_MS 20000
+#define LED_BLINK_MS 10000
+#define SAVE_DELAY_MS 10000
 
 const uint8_t channels[] = {90, 100, 110};
 #define CHANNEL_COUNT (sizeof(channels) / sizeof(channels[0]))
 
-#define SAVE_DELAY_MS 10000UL
-#define BLINK_DELAY_MS 2000UL
+Vcc vcc(1);
+
+Button PTT(PTT_BUTTON_PIN);
+EncButton encoder(ENCODER_A_PIN, ENCODER_B_PIN, ENCODER_SWITCH_PIN);
+
+RF24 radio(CE_PIN, CSN_PIN);
+RF24Audio rfAudio(radio, 0);
 
 struct Settings
 {
@@ -74,22 +81,12 @@ Settings config;
 bool isConfigEdited = false;
 uint32_t configLastChangeTime = 0;
 
-Button PTT(PTT_BUTTON_PIN);
-EncButton encoder(ENCODER_A_PIN, ENCODER_B_PIN, ENCODER_SWITCH_PIN);
-
-RF24 radio(CE_PIN, CSN_PIN);
-RF24Audio rfAudio(radio, 0);
-
 bool isTx = false;
 uint8_t channelIdx = 0;
 uint8_t channel = channels[channelIdx];
 uint8_t volume = 4;
 uint8_t dataRateIdx = 1;
 uint8_t txPowerIdx = 2;
-
-bool blinkPending = false;
-uint8_t blinkCountPending = 0;
-uint32_t blinkWhenMs = 0;
 
 enum BlinkState : uint8_t
 {
