@@ -2,12 +2,12 @@
 Controls:
 
 - PTT hold ............ TX mode
-- PTT release ......... RX mode 
+- PTT release ......... RX mode
 
 - Encoder turn ........ Volume
 - Encoder press+turn .. Channel
-- Encoder click ....... Data Rate 
-- Enc turn+PTT hold.... TX Power 
+- Encoder click ....... Data Rate
+- Enc turn+PTT hold.... TX Power
 
 */
 
@@ -33,24 +33,18 @@ void setup()
   DBG("Channel: %u, Volume: %u, dataRateIdx: %u, TxPowerIdx: %u\n", channel, volume, dataRateIdx, txPowerIdx);
 
   isTx = false;
+  blinker.begin(LED_PIN);
 }
 
 void loop()
 {
-  static uint32_t blinkTimer;
-  uint32_t now = millis();
-
   encoder.tick();
   PTT.tick();
 
   // Power toggle when encoder turned while PTT held
   if (PTT.pressing() && encoder.turn())
   {
-    if (isTx)
-    {
-      digitalWrite(LED_PIN, LOW);
-    }
-
+    if (blinker.active()) blinker.stop();
     int idx = (int)txPowerIdx + (encoder.dir() > 0 ? 1 : -1);
     if (idx < 0)
       idx = 3;
@@ -59,7 +53,7 @@ void loop()
     txPowerIdx = (uint8_t)idx;
     config.txPowerIdx = txPowerIdx;
     applyTxPower();
-    scheduleBlink(txPowerIdx + 1);
+    blinker.startEx(txPowerIdx + 1, 200, 200, 200, 200, true);
     markConfigEdited();
     DBG("TxPowerIdx: %u\n", txPowerIdx);
   }
@@ -79,7 +73,7 @@ void loop()
       channel = channels[channelIdx];
       config.channel = channel;
       applyChannel();
-      scheduleBlink(channelIdx + 1);
+      blinker.startEx(channelIdx + 1, 200, 200, 200, 200, false);
       markConfigEdited();
       DBG("Channel: %u\n", channel);
     }
@@ -105,7 +99,7 @@ void loop()
     dataRateIdx = (dataRateIdx + 1) % 3;
     config.dataRateIdx = dataRateIdx;
     applyDataRate();
-    scheduleBlink(dataRateIdx + 1);
+    blinker.startEx(dataRateIdx + 1, 200, 200, 200, 200, false);
     markConfigEdited();
     DBG("dataRateIdx: %u\n", dataRateIdx);
   }
@@ -117,57 +111,27 @@ void loop()
     digitalWrite(LED_PIN, HIGH);
     isTx = true;
     DBG("Transmitting...\n");
-    blinkTimer = now;
   }
   // Stop Transmitting when PTT released
   if (PTT.release() && isTx)
   {
-    digitalWrite(LED_PIN, LOW);
+    blinker.stop();
     rfAudio.receive();
     isTx = false;
-    blinkTimer = now;
     DBG("Receiving...\n");
   }
 
+  uint32_t now = millis();
+  static uint32_t nextBlinkAt;
+
   // Blink LED when radio is waiting
-  if (!isTx)
+  if (now >= nextBlinkAt && !blinker.active() && !isTx)
   {
-    if (!(TCCR0A & _BV(COM0A1)))
-    {
-      if (now - blinkTimer >= LED_BLINK)
-      {
-        float volts = vcc.Read_Volts();
-#ifdef DEBUG_eHand
-        Serial.print(F("Battery: "));
-        Serial.print(volts, 2);
-        Serial.println(F(" V"));
-#endif
-        if (volts <= LOW_BATT_VOLT)
-        {
-          digitalWrite(LED_PIN, HIGH);
-          delay(120);
-          digitalWrite(LED_PIN, LOW);
-          delay(120);
-          digitalWrite(LED_PIN, HIGH);
-          delay(120);
-          digitalWrite(LED_PIN, LOW);
-        }
-        else
-        {
-          digitalWrite(LED_PIN, HIGH);
-          delay(120);
-          digitalWrite(LED_PIN, LOW);
-        }
-
-        blinkTimer = now;
-      }
-    }
+    bool isLow = lowBattery(now);
+    blinker.startEx(isLow ? 2 : 1, 50, 50, 200, 0, false);
+    nextBlinkAt = now + LED_BLINK_MS;
   }
 
-  if (blinkPending && (int32_t)(now - blinkWhenMs) >= 0)
-  {
-    doBlink(blinkCountPending);
-    blinkPending = false;
-  }
+  blinker.tick();
   saveSettings();
 }
