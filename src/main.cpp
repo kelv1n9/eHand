@@ -61,7 +61,7 @@ void loop()
   else if (!PTT.pressing() && encoder.turn())
   {
     // Channel toggle when encoder pressed and turned
-    if (encoder.pressing())
+    if (encoder.pressing() && !isTx)
     {
       int newIndex = (int)channelIdx + encoder.dir();
 
@@ -78,7 +78,7 @@ void loop()
       markConfigEdited();
     }
     // Volume toggle when encoder turned
-    else
+    else if (!isTx)
     {
       int new_volume = (int)volume + encoder.dir();
       if (new_volume < 0)
@@ -100,23 +100,46 @@ void loop()
   // Rate toggle on encoder click
   if (encoder.click())
   {
-    dataRateIdx = (dataRateIdx + 1) % 3;
-    config.dataRateIdx = dataRateIdx;
-    applyDataRate();
-    blinker.startEx(dataRateIdx + 1, 200, 200, 200, 200, false);
-    markConfigEdited();
+    if (PTT.pressing())
+    {
+      pttLocked = true;
+      DBG("PTT Locked\n");
+    }
+    else if (!isTx)
+    {
+      dataRateIdx = (dataRateIdx + 1) % 3;
+      config.dataRateIdx = dataRateIdx;
+      applyDataRate();
+      blinker.startEx(dataRateIdx + 1, 200, 200, 200, 200, false);
+      markConfigEdited();
+    }
   }
 
   // Start Transmitting while PTT hold
-  if (PTT.press() && !isTx)
+  if (PTT.press())
   {
-    rfAudio.transmit();
-    digitalWrite(LED_PIN, HIGH);
-    isTx = true;
-    DBG("Transmitting...\n");
+    if (!isTx && !pttLocked)
+    {
+      rfAudio.transmit();
+      digitalWrite(LED_PIN, HIGH);
+      isTx = true;
+      DBG("Transmitting...\n");
+    }
+    else if (pttLocked)
+    {
+      pttLocked = false;
+      DBG("PTT Lock released\n");
+      if (isTx)
+      {
+        blinker.stop();
+        rfAudio.receive();
+        isTx = false;
+        DBG("Receiving...\n");
+      }
+    }
   }
   // Stop Transmitting when PTT released
-  if (PTT.release() && isTx)
+  if (PTT.release() && isTx && !pttLocked)
   {
     blinker.stop();
     rfAudio.receive();

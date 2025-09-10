@@ -82,6 +82,7 @@ bool isConfigEdited = false;
 uint32_t configLastChangeTime = 0;
 
 bool isTx = false;
+bool pttLocked = false;
 uint8_t channelIdx = 0;
 uint8_t channel = channels[channelIdx];
 uint8_t volume = 4;
