@@ -343,9 +343,9 @@ void loadSettings()
     channel = config.channel;
     txPowerIdx = config.txPowerIdx;
 
-    applyTxPower();
-    applyDataRate();
     applyChannel();
+    applyDataRate();
+    applyTxPower();
     applyVolume();
 }
 

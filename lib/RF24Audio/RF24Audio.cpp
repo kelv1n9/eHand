@@ -54,12 +54,6 @@ RF24Audio::RF24Audio(RF24& _radio, byte radioNum): radio(_radio)
 
 void RF24Audio::begin()
 {
-    radio.begin();
-    //delay(500);
-    // Set the defined input pins as inputs with pullups high. See http://arduino.cc/en/Tutorial/InputPullupSerial
-    #if defined (ENABLE_LED)
-    pinMode(ledPin,OUTPUT);
-    #endif
     pinMode(speakerPin, OUTPUT);
     pinMode(speakerPin2, OUTPUT);
 
@@ -72,9 +66,7 @@ void RF24Audio::begin()
         #endif
     }
 
-    radio.setChannel(1);                                  // Set RF channel to 1
     radio.setAutoAck(0);                                  // Disable ACKnowledgement packets
-    radio.setDataRate(RF_SPEED);                          // Set data rate as specified in user options
     radio.setCRCLength(RF24_CRC_8);                       // Set CRC to 1 byte for speed
     radio.openWritingPipe(pipes[0]);                      // Set up reading and writing pipes. All of the radios write via multicast on the same pipe
     radio.openReadingPipe(1, pipes[1]);                   // All of the radios listen by default to the same multicast pipe

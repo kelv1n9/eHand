@@ -3,6 +3,7 @@ Controls:
 
 - PTT hold ............ TX mode
 - PTT release ......... RX mode
+- PTT hold+Enc click .. Lock mode
 
 - Encoder turn ........ Volume
 - Encoder press+turn .. Channel
@@ -26,11 +27,9 @@ void setup()
   digitalWrite(LED_PIN, LOW);
 
   radio.begin();
+  loadSettings();
   rfAudio.begin();
 
-  loadSettings();
-
-  isTx = false;
   blinker.begin(LED_PIN);
 }
 
