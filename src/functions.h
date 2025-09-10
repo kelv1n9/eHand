@@ -53,7 +53,7 @@ D5 - Encoder switch
 #define CE_PIN 7
 
 // CONSTANTS
-#define LOW_BATT_VOLT 3.8
+#define LOW_BATT_VOLT 3800
 #define BATT_SAMPLE_MS 20000
 #define LED_BLINK_MS 10000
 #define SAVE_DELAY_MS 10000
@@ -240,7 +240,8 @@ bool lowBattery(uint32_t now)
 
     if (now >= nextSampleAt)
     {
-        float volts = vcc.Read_Volts();
+        uint16_t volts = vcc.Read_Volts() * 1000;
+        DBG("Battery: %u mV\n", volts);
         low = (volts <= LOW_BATT_VOLT);
         nextSampleAt = now + BATT_SAMPLE_MS;
     }
@@ -250,6 +251,7 @@ bool lowBattery(uint32_t now)
 void applyChannel()
 {
     radio.setChannel(channel);
+    DBG("Channel: %u\n", channel);
 }
 
 void applyDataRate()
@@ -258,15 +260,15 @@ void applyDataRate()
     {
     case 0:
         radio.setDataRate(RF24_250KBPS);
-        DBG("Set data rate: 250kbps\n");
+        DBG("Data Rate: 250kbps\n");
         break;
     case 1:
         radio.setDataRate(RF24_1MBPS);
-        DBG("Set data rate: 1Mbps\n");
+        DBG("Data Rate: 1Mbps\n");
         break;
     case 2:
         radio.setDataRate(RF24_2MBPS);
-        DBG("Set data rate: 2Mbps\n");
+        DBG("Data Rate: 2Mbps\n");
         break;
     }
 }
@@ -277,19 +279,19 @@ void applyTxPower()
     {
     case 0:
         radio.setPALevel(RF24_PA_MIN);
-        DBG("Set Tx Power: MIN\n");
+        DBG("Tx Power: MIN\n");
         break;
     case 1:
         radio.setPALevel(RF24_PA_LOW);
-        DBG("Set Tx Power: LOW\n");
+        DBG("Tx Power: LOW\n");
         break;
     case 2:
         radio.setPALevel(RF24_PA_HIGH);
-        DBG("Set Tx Power: HIGH\n");
+        DBG("Tx Power: HIGH\n");
         break;
     case 3:
         radio.setPALevel(RF24_PA_MAX);
-        DBG("Set Tx Power: MAX\n");
+        DBG("Tx Power: MAX\n");
         break;
     }
 }
@@ -297,6 +299,7 @@ void applyTxPower()
 void applyVolume()
 {
     rfAudio.setVolume(volume);
+    DBG("Volume: %u\n", volume);
 }
 
 void markConfigEdited()

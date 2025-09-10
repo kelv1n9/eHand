@@ -20,7 +20,7 @@ void setup()
   printf_begin();
   delay(1000);
   DBG("Name: %s\n", NAME);
-  DBG("Version: %s\n", VERSION);
+  DBG("Version: %s\n\n", VERSION);
 #endif
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
@@ -29,8 +29,6 @@ void setup()
   rfAudio.begin();
 
   loadSettings();
-
-  DBG("Channel: %u, Volume: %u, dataRateIdx: %u, TxPowerIdx: %u\n", channel, volume, dataRateIdx, txPowerIdx);
 
   isTx = false;
   blinker.begin(LED_PIN);
@@ -47,7 +45,8 @@ void loop()
   // Power toggle when encoder turned while PTT held
   if (PTT.pressing() && encoder.turn())
   {
-    if (blinker.active()) blinker.stop();
+    if (blinker.active())
+      blinker.stop();
     int idx = (int)txPowerIdx + (encoder.dir() > 0 ? 1 : -1);
     if (idx < 0)
       idx = 3;
@@ -58,7 +57,6 @@ void loop()
     applyTxPower();
     blinker.startEx(txPowerIdx + 1, 200, 200, 200, 200, true);
     markConfigEdited();
-    DBG("TxPowerIdx: %u\n", txPowerIdx);
   }
   else if (!PTT.pressing() && encoder.turn())
   {
@@ -78,7 +76,6 @@ void loop()
       applyChannel();
       blinker.startEx(channelIdx + 1, 200, 200, 200, 200, false);
       markConfigEdited();
-      DBG("Channel: %u\n", channel);
     }
     // Volume toggle when encoder turned
     else
@@ -88,11 +85,15 @@ void loop()
         new_volume = 0;
       if (new_volume > 7)
         new_volume = 7;
-      volume = (uint8_t)new_volume;
-      config.volume = volume;
-      applyVolume();
-      markConfigEdited();
-      DBG("Volume: %u\n", volume);
+
+      if (new_volume != volume)
+      {
+        volume = (uint8_t)new_volume;
+        config.volume = volume;
+        applyVolume();
+        markConfigEdited();
+        blinker.startEx(1, 20, 20, 0, 200, false);
+      }
     }
   }
 
@@ -104,7 +105,6 @@ void loop()
     applyDataRate();
     blinker.startEx(dataRateIdx + 1, 200, 200, 200, 200, false);
     markConfigEdited();
-    DBG("dataRateIdx: %u\n", dataRateIdx);
   }
 
   // Start Transmitting while PTT hold
