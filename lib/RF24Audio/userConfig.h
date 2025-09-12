@@ -14,16 +14,6 @@
  */
 #define SAMPLE_RATE 16000
 
-/**
- * @brief configure the RF data rate
- *
- * These are not limits, just a guide:
- * - RF24_250KBPS will do 13-20khz+ sample rate
- * - RF24_1MBPS up to 24-44khz+
- * - RF24_2MBPS for higher.
- */
-#define RF_SPEED RF24_1MBPS
-
 /** @brief The pin that analog readings will be taken from (microphone pin) */
 #define ANALOG_PIN A0
 
@@ -32,9 +22,6 @@
 // 10-bit audio requires more bandwidth. A 20khz sample rate will need 25KB/S transfer rate, which is about max for 250kbps data rate.
 // With a 32khz sample rate, the volume can be set to -1 to shift the sample down to 9-bit, which is the highest the timers can handle at 32khz
 // #define tenBit       // Enable 10-bit samples   Note: 44khz+ sample rate requires 8-bits per sample
-
-// #define speakerPin 9 // If using a non-standard board, override the timer1 pins
-// #define speakerPin 10
 
 /**
  * @brief Indicator pin
@@ -50,7 +37,7 @@
 #define buffSize 32
 
 // #define speakerTX               // Whether to output to speaker while transmitting
-// #define oversampling            // Oversampling is recommended for low sample rates only. This only affects playback.
+#define oversampling            // Oversampling is recommended for low sample rates only. This only affects playback.
 // #define RX_ONLY
 // #define TX_ONLY // Not functional yet
 
