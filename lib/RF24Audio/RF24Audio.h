@@ -32,10 +32,9 @@ public:
      *	RF24Audio rfAudio(radio, 0); // Initialize the audio driver
      * @endcode
      *
-     * @param _radio   The underlying radio driver instance 
-     * @param radioNum The radio identifier
+     * @param _radio   The underlying radio driver instance
      */
-    RF24Audio(RF24 &_radio, byte radioNum);
+    RF24Audio(RF24 &_radio);
 
     /**
      * Initialize the radio and audio library
@@ -86,44 +85,6 @@ public:
      *
      */
     void receive();
-
-    /**
-     * Control of Private or Public Communication
-     *
-     * Call this function to establish private communication between nodes
-     * in a radio group, or to switch back to public transmission.
-     * @note Using a radioID of 255 will disable private communication and broadcast to all nodes
-     *
-     * @code
-     * rfAudio.broadcast(1); 	// Only transmit audio to radio number 1
-     * rfAudio.broadcast(255);  // Transmit audio to all radios in the group
-     * @endcode
-     * @param radioID  Set the radioID of the radio to communicate privately with.
-     */
-    void broadcast(byte radioID);
-
-    /**
-     * Get any of the preset radio addresses
-     *
-     * Useful for listening nodes who wish to create private or additional radio groups
-     * The library has 14 predefined radio addreses. All radios listen/write on the first
-     * two addresses (0, 1), and engage a private channel based on the radio number.
-     * Radio 0 listens on address 2, Radio 1 on address 3, etc.
-     *
-     * @code
-     * uint64_t newAddress = rfAudio.getAddress(3);	// Gets the 3rd defined radio address
-     *  OR
-     * radio.openReadingPipe(0, rfAudio.getAddress(7)); // Listens on the 7th defined radio address
-     * @endcode
-     * @param addressNo  Numbers 0 through 14 to access any part of the defined address array
-     * @return RadioAddress:  Returns the requested predefined radio address
-     */
-    uint64_t getAddress(byte addressNo);
-
-    /**
-     * Handle button inputs. Must be called regularly for button functionality
-     */
-    void handleButtons();
 
 private:
     RF24 &radio;

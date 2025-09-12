@@ -22,18 +22,15 @@ volatile boolean buffEmpty[2] = {true, true}, whichBuff = false, a, lCntr = 0, s
 volatile byte buffCount = 0;
 volatile byte pauseCntr = 0;
 unsigned int intCount = 0;
-byte txCmd[2] = {'r', 'R'};
 byte buffer[2][buffSize + 1];
 char volMod = -1;
 byte bitPos = 0, bytePos = 25;
 byte bytH;
-byte radioIdentifier;
 
 #if defined(tenBit)
 unsigned int sampl;
 byte bytL;
 #endif
-unsigned long volTime = 0;
 
 RF24 radi(0, 0);
 
@@ -41,26 +38,23 @@ RF24 radi(0, 0);
 #define rampMega
 #endif
 
-const byte broadcastVal = 255; // The value for broadcasting to all nodes using the broadcast() command.
-
 /*****************************************************************************************************************************/
 /************************************************* General Section ***********************************************************/
 
-RF24Audio::RF24Audio(RF24 &_radio, byte radioNum) : radio(_radio)
+RF24Audio::RF24Audio(RF24 &_radio) : radio(_radio)
 {
     radi = radio;
-    radioIdentifier = radioNum;
 }
 
 void RF24Audio::begin()
 {
     pinMode(speakerPin, OUTPUT);
 
-    radio.setAutoAck(0);                                  // Disable ACKnowledgement packets
-    radio.setCRCLength(RF24_CRC_8);                       // Set CRC to 1 byte for speed
-    radio.openWritingPipe(pipes[0]);                      // Set up reading and writing pipes. All of the radios write via multicast on the same pipe
-    radio.openReadingPipe(1, pipes[1]);                   // All of the radios listen by default to the same multicast pipe
-    radio.openReadingPipe(2, pipes[radioIdentifier + 2]); // Every radio also has its own private listening pipe
+    radio.setAutoAck(0);                // Disable ACKnowledgement packets
+    radio.setCRCLength(RF24_CRC_8);     // Set CRC to 1 byte for speed
+    radio.openWritingPipe(pipes[0]);    // Set up reading and writing pipes. All of the radios write via multicast on the same pipe
+    radio.openReadingPipe(1, pipes[1]); // All of the radios listen by default to the same multicast pipe
+    radio.setRetries(0, 0);
 
     radio.startListening(); // NEED to start listening after opening a reading pipe
     timerStart();           // Get the timer running
@@ -177,11 +171,6 @@ void RF24Audio::receive()
     RX();
 }
 
-uint64_t RF24Audio::getAddress(byte addressNo)
-{
-    return pipes[addressNo];
-}
-
 /*****************************************************************************************************************************/
 /****************************************** Reception (RX) Section ***********************************************************/
 
@@ -226,14 +215,14 @@ void handleRadio()
             radi.read(&buffer[0], 32); // Read the payload into the buffer
             switch (buffer[0][0])
             { // Additional commands can be added here for controlling other things via radio command
-#if !defined(RX_ONLY)
-            case 'r':
-                if (buffer[0][1] == 'R' && radioIdentifier < 2)
-                { // Switch to TX mode if we received the remote tx command and this is radio 0 or 1
-                    TX();
-                }
-                break;
-#endif
+              // #if !defined(RX_ONLY)
+              //             case 'r':
+              //                 if (buffer[0][1] == 'R' && radioIdentifier < 2)
+              //                 { // Switch to TX mode if we received the remote tx command and this is radio 0 or 1
+              //                     TX();
+              //                 }
+              //                 break;
+              // #endif
             default:
                 streaming = 1; // If not a command, treat as audio data, enable streaming
 
@@ -277,7 +266,7 @@ volatile byte bufCtr = 0;
 volatile unsigned int visCtr = 0;
 
 ISR(TIMER1_CAPT_vect)
-{ 
+{
     // This interrupt checks for data at 1/16th the sample rate. Since there are 32 bytes per payload, it gets two chances for every payload
     bufCtr++;
     visCtr++; // Keep track of how many times the interrupt has been triggered
@@ -381,25 +370,25 @@ ISR(TIMER1_OVF_vect)
 
 #if !defined(RX_ONLY) // If TX is enabled:
 
-void RF24Audio::broadcast(byte radioID)
-{
-    if (radioID == radioIdentifier)
-    {
-        return;
-    } // If trying to send to our own address, return
+// void RF24Audio::broadcast(byte radioID)
+// {
+//     if (radioID == radioIdentifier)
+//     {
+//         return;
+//     } // If trying to send to our own address, return
 
-    noInterrupts(); // Disable interrupts during change of transmission address
+//     noInterrupts(); // Disable interrupts during change of transmission address
 
-    if (radioID == broadcastVal)
-    {
-        radio.openWritingPipe(pipes[1]); // Use the public multicast pipe
-    }
-    else
-    {
-        radio.openWritingPipe(pipes[radioID + 2]); // Open a pipe to the specified radio(s). If two or more radios share the same ID,
-    } // they will receive the same single broadcasts, but will not be able to initiate
-    interrupts(); // private communication betwen each other
-}
+//     if (radioID == broadcastVal)
+//     {
+//         radio.openWritingPipe(pipes[1]); // Use the public multicast pipe
+//     }
+//     else
+//     {
+//         radio.openWritingPipe(pipes[radioID + 2]); // Open a pipe to the specified radio(s). If two or more radios share the same ID,
+//     } // they will receive the same single broadcasts, but will not be able to initiate
+//     interrupts(); // private communication betwen each other
+// }
 
 // Transmission sending interrupt
 ISR(TIMER1_COMPA_vect)
@@ -421,7 +410,7 @@ ISR(TIMER1_COMPB_vect)
 { // This interrupt vector captures the ADC values and stores them in a buffer
 
 #if !defined(tenBit)
-    // 8-bit samples
+  // 8-bit samples
     buffer[whichBuff][buffCount] = bytH = ADCH; // Read the high byte of the ADC register into the buffer for 8-bit samples
 
 #if defined(speakerTX)

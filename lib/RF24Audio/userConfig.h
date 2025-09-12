@@ -10,6 +10,10 @@
  *
  * Maximum Range: Sample rate 16000, RF_SPEED RF24_250KBPS <br>
  * Maximum Quality: Sample rate 44000, RF_SPEED RF24_2MBPS
+ *
+ * - RF24_250KBPS will do 13-20khz+ sample rate
+ * - RF24_1MBPS up to 24-44khz+
+ * - RF24_2MBPS for higher.
  * @note 44khz+ sample rate requires 8-bits per sample
  */
 #define SAMPLE_RATE 16000
@@ -37,7 +41,7 @@
 #define buffSize 32
 
 // #define speakerTX               // Whether to output to speaker while transmitting
-#define oversampling            // Oversampling is recommended for low sample rates only. This only affects playback.
+// #define oversampling // Oversampling is recommended for low sample rates only. This only affects playback.
 // #define RX_ONLY
 // #define TX_ONLY // Not functional yet
 
@@ -79,19 +83,4 @@
 
 //********Radio Defines ****************************
 /** Radio pipe addresses for the 2 nodes to communicate. */
-const uint64_t pipes[14] =
-    {
-        0xABCDABCD71LL,
-        0x544d52687CLL,
-        0x544d526832LL,
-        0x544d52683CLL,
-        0x544d526846LL,
-        0x544d526850LL,
-        0x544d52685ALL,
-        0x544d526820LL,
-        0x544d52686ELL,
-        0x544d52684BLL,
-        0x544d526841LL,
-        0x544d526855LL,
-        0x544d52685FLL,
-        0x544d526869LL};
+const uint64_t pipes[2] = {0x544d52685FLL, 0x544d526869LL};

@@ -21,12 +21,12 @@
     {            \
     } while (0)
 #endif
-/* 
+
+/*
 
 Pin definitions
 A0 - Microphone input
 D9 - Speaker output
-D10 - Speaker output
 D6 - LED output
 D12 - SPI MISO
 D11 - SPI MOSI
@@ -38,7 +38,7 @@ D3 - Encoder B
 D4 - Encoder A
 D5 - Encoder switch
 
-*/ 
+*/
 
 #define NAME "eHand"
 #define VERSION "1.0.0"
@@ -67,7 +67,7 @@ Button PTT(PTT_BUTTON_PIN);
 EncButton encoder(ENCODER_A_PIN, ENCODER_B_PIN, ENCODER_SWITCH_PIN);
 
 RF24 radio(CE_PIN, CSN_PIN);
-RF24Audio rfAudio(radio, 0);
+RF24Audio rfAudio(radio);
 
 struct Settings
 {
@@ -188,7 +188,7 @@ struct Blinker
                 digitalWrite(pin, HIGH);
                 tmark = now;
                 state = BL_ON;
-                use_pre = false; 
+                use_pre = false;
             }
         }
         break;
