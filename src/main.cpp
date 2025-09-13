@@ -23,14 +23,10 @@ void setup()
   DBG("Name: %s\n", NAME);
   DBG("Version: %s\n\n", VERSION);
 #endif
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
-
   radio.begin();
   loadSettings();
   rfAudio.begin();
-
-  blinker.begin(LED_PIN);
+  blinker.begin();
 }
 
 void loop()
@@ -51,8 +47,7 @@ void loop()
       idx = 3;
     if (idx > 3)
       idx = 0;
-    txPowerIdx = (uint8_t)idx;
-    config.txPowerIdx = txPowerIdx;
+    config.txPowerIdx = txPowerIdx = (uint8_t)idx;
     applyTxPower();
     blinker.startEx(txPowerIdx + 1, 200, 200, 200, 200, true);
     markConfigEdited();
@@ -70,8 +65,7 @@ void loop()
         newIndex = 0;
 
       channelIdx = (uint8_t)newIndex;
-      channel = channels[channelIdx];
-      config.channel = channel;
+      config.channel = channel = channels[channelIdx];
       applyChannel();
       blinker.startEx(channelIdx + 1, 200, 200, 200, 200, rfAudio.isStreaming());
       markConfigEdited();
@@ -87,8 +81,7 @@ void loop()
 
       if (new_volume != volume)
       {
-        volume = (uint8_t)new_volume;
-        config.volume = volume;
+        config.volume = volume = (uint8_t)new_volume;
         applyVolume();
         markConfigEdited();
         blinker.startEx(1, 20, 20, 0, 200, rfAudio.isStreaming());

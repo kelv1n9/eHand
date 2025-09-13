@@ -15,9 +15,11 @@
 volatile boolean buffEmpty[2] = {true, true};
 volatile boolean whichBuff = false;
 volatile boolean streaming = false;
+volatile byte prescaleByte = 0;
 volatile byte buffCount = 0;
 volatile byte pauseCntr = 0;
 volatile byte bufCtr = 0;
+byte pin = ANALOG_PIN;
 unsigned int intCount = 0;
 byte buffer[2][buffSize + 1];
 char volMod = -1;
@@ -44,30 +46,40 @@ void RF24Audio::begin()
 {
     pinMode(speakerPin, OUTPUT);
 
-    radio.setAutoAck(0);                   // Disable ACKnowledgement packets
-    radio.setCRCLength(RF24_CRC_8); // Set CRC to 1 byte for speed
-    radio.openWritingPipe(pipes[0]);       // Set up reading and writing pipes. All of the radios write via multicast on the same pipe
-    radio.openReadingPipe(1, pipes[1]);    // All of the radios listen by default to the same multicast pipe
+    // 32 MHz / 128 / 13 = 19.5kHz
+    if (SAMPLE_RATE < 17800)
+    {
+        prescaleByte = B00000110; // 64
+    }
+    else if (SAMPLE_RATE < 36000)
+    {
+        prescaleByte = B00000101; // 32
+    }
+    else if (SAMPLE_RATE < 54000)
+    {
+        prescaleByte = B00000100; // 16
+    }
+    else if (SAMPLE_RATE < 130000)
+    {
+        prescaleByte = B00000011; // 8
+    }
+    else
+    {
+        prescaleByte = B00000010; // 4
+    }
+
+    if (pin >= 14)
+        pin -= 14; // allow for channel or pin numbers
+
+    radio.setAutoAck(0);                // Disable ACKnowledgement packets
+    radio.setCRCLength(RF24_CRC_8);     // Set CRC to 1 byte for speed
+    radio.openWritingPipe(pipes[0]);    // Set up reading and writing pipes. All of the radios write via multicast on the same pipe
+    radio.openReadingPipe(1, pipes[1]); // All of the radios listen by default to the same multicast pipe
     radio.setRetries(0, 0);
 
     radio.startListening(); // NEED to start listening after opening a reading pipe
     timerStart();           // Get the timer running
     RX();                   // Start listening for transmissions
-}
-
-// General functions for volume control
-
-void vol(bool upDn)
-{
-    if (upDn == 1)
-        volMod++;
-    else
-        volMod--;
-}
-
-void RF24Audio::volume(bool upDn)
-{
-    vol(upDn);
 }
 
 void RF24Audio::setVolume(char vol)
@@ -85,20 +97,25 @@ void RF24Audio::timerStart()
 
 void rampDown()
 {
-    int current = OCR1A;
-    if (current > 0)
+    uint16_t step = 400;
+    uint16_t target = 0;
+    uint16_t cur = OCR1A;
+
+    if (cur > target)
     {
-        for (unsigned int i = 0; i < ICR1; i++)
+        while (cur > target + step)
         {
-            OCR1A = constrain((current - i), 0, ICR1);
+            cur -= step;
+            OCR1A = cur;
             delayMicroseconds(100);
         }
     }
+
+    OCR1A = target;
 }
 
 void rampUp(byte nextVal)
 {
-    byte tmp = 200;
     unsigned int mod;
     if (volMod > 0)
     {
@@ -108,16 +125,16 @@ void rampUp(byte nextVal)
     {
         mod = OCR1A << (volMod * -1);
     }
-    if (tmp > mod)
+    if (nextVal > mod)
     {
         for (unsigned int i = 0; i < buffSize; i++)
         {
-            mod = constrain(mod + 1, mod, tmp);
+            mod = constrain(mod + 1, mod, nextVal);
             buffer[0][i] = mod;
         }
         for (unsigned int i = 0; i < buffSize; i++)
         {
-            mod = constrain(mod + 1, mod, tmp);
+            mod = constrain(mod + 1, mod, nextVal);
             buffer[1][i] = mod;
         }
     }
@@ -125,12 +142,12 @@ void rampUp(byte nextVal)
     {
         for (unsigned int i = 0; i < buffSize; i++)
         {
-            mod = constrain(mod - 1, tmp, mod);
+            mod = constrain(mod - 1, nextVal, mod);
             buffer[0][i] = mod;
         }
         for (unsigned int i = 0; i < buffSize; i++)
         {
-            mod = constrain(mod - 1, tmp, mod);
+            mod = constrain(mod - 1, nextVal, mod);
             buffer[1][i] = mod;
         }
     }
@@ -173,7 +190,7 @@ void handleRadio()
             pauseCntr++; // No payload available, keep track of how many for disabling the speaker
         }
 
-        if (pauseCntr > 50)
+        if (pauseCntr > 10)
         {                            // If we failed to get a payload 250 times, disable the speaker output
             pauseCntr = 0;           // Reset the failure counter
             rampDown();              // Ramp down the speaker (prevention of popping sounds)
@@ -314,7 +331,6 @@ void TX()
 {
     TIMSK1 &= ~(_BV(ICIE1) | _BV(TOIE1)); // Disable the receive interrupts
 #if defined(ENABLE_LED)
-    // TCCR0A &= ~_BV(COM0A1); // Disable LED visualization
     digitalWrite(ledPin, LOW);
 #endif
     radi.stopListening();           // Enter transmit mode on the radio
@@ -326,75 +342,21 @@ void TX()
     buffEmpty[0] = 1;
     buffEmpty[1] = 1; // Set some variables
 
-    byte pin = ANALOG_PIN;
-/*** This section taken from wiring_analog.c to translate between pins and channel numbers ***/
-#if defined(analogPinToChannel)
-#if defined(__AVR_ATmega32U4__)
-    if (pin >= 18)
-        pin -= 18; // allow for channel or pin numbers
-#endif
-    pin = analogPinToChannel(pin);
-#elif defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
-    if (pin >= 54)
-        pin -= 54; // allow for channel or pin numbers
-#elif defined(__AVR_ATmega32U4__)
-    if (pin >= 18)
-        pin -= 18; // allow for channel or pin numbers
-#elif defined(__AVR_ATmega1284__) || defined(__AVR_ATmega1284P__) || defined(__AVR_ATmega644__) || defined(__AVR_ATmega644A__) || defined(__AVR_ATmega644P__) || defined(__AVR_ATmega644PA__)
-    if (pin >= 24)
-        pin -= 24; // allow for channel or pin numbers
-#else
-    if (pin >= 14)
-        pin -= 14; // allow for channel or pin numbers
-#endif
-
 #if defined(ADCSRB) && defined(MUX5)
-    // the MUX5 bit of ADCSRB selects whether we're reading from channels
-    // 0 to 7 (MUX5 low) or 8 to 15 (MUX5 high).
     ADCSRB = (ADCSRB & ~(1 << MUX5)) | (((pin >> 3) & 0x01) << MUX5);
 #endif
-
 #if defined(ADMUX)
     ADMUX = (pin & 0x07) | _BV(REFS0); // Enable the ADC PIN and set 5v Analog Reference
 #endif
 
-    ICR1 = 10 * (RESOLUTION_BASE / SAMPLE_RATE); // Timer counts from 0 to this value
-
-    // If disabling/enabling the speaker, ramp it down
-    rampDown();
-    TCCR1A &= ~(_BV(COM1A1)); // Disable output to speaker
-
-    ADMUX |= _BV(ADLAR); // Left-shift result so only high byte needs to be read
-
+    ICR1 = 10 * (RESOLUTION_BASE / SAMPLE_RATE);    // Timer counts from 0 to this value
+    rampDown();                                     // If disabling/enabling the speaker, ramp it down
+    TCCR1A &= ~(_BV(COM1A1));                       // Disable output to speaker
+    ADMUX |= _BV(ADLAR);                            // Left-shift result so only high byte needs to be read
     ADCSRB |= _BV(ADTS0) | _BV(ADTS0) | _BV(ADTS2); // Attach ADC start to TIMER1 Capture interrupt flag
-
-    byte prescaleByte = 0;
-
-    if (SAMPLE_RATE < 8900)
-    {
-        prescaleByte = B00000111;
-    } // 128
-    else if (SAMPLE_RATE < 18000)
-    {
-        prescaleByte = B00000110;
-    } // ADC division factor 64 (16MHz / 64 / 13clock cycles = 19230 Hz Max Sample Rate )
-    else if (SAMPLE_RATE < 27000)
-    {
-        prescaleByte = B00000101;
-    } // 32  (38461Hz Max)
-    else if (SAMPLE_RATE < 65000)
-    {
-        prescaleByte = B00000100;
-    } // 16  (76923Hz Max)
-    else
-    {
-        prescaleByte = B00000011;
-    } // 8  (fast as hell)
-
-    ADCSRA = prescaleByte;            // Adjust sampling rate of ADC depending on sample rate
-    ADCSRA |= _BV(ADEN) | _BV(ADATE); // ADC Enable, Auto-trigger enable
-
-    TIMSK1 = _BV(OCIE1B) | _BV(OCIE1A); // Enable the TIMER1 COMPA and COMPB interrupts
+    ADCSRA = prescaleByte;                          // Adjust sampling rate of ADC depending on sample rate
+    ADCSRA |= _BV(ADEN) | _BV(ADATE);               // ADC Enable, Auto-trigger enable
+    TIMSK1 = _BV(OCIE1B) | _BV(OCIE1A);             // Enable the TIMER1 COMPA and COMPB interrupts
 }
 
 #endif

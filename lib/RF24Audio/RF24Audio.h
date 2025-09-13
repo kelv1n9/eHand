@@ -49,16 +49,6 @@ public:
     /**
      * Volume Control
      * @code
-     * rfAudio.volume(1); // Raise the volume
-     * @endcode
-     * @param upDn Set 0 to lower volume, 1 to raise volume
-     *
-     */
-    void volume(bool upDn);
-
-    /**
-     * Volume Control
-     * @code
      * rfAudio.setVolume(4); // Set the volume to mid-level
      * @endcode
      * @param vol Set at 0 to 7 for range of volume control

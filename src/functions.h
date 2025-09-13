@@ -61,6 +61,7 @@ D5 - Encoder switch
 const uint8_t channels[] = {90, 100, 110};
 #define CHANNEL_COUNT (sizeof(channels) / sizeof(channels[0]))
 
+// TODO: Add calibration
 Vcc vcc(1);
 
 Button PTT(PTT_BUTTON_PIN);
@@ -99,17 +100,16 @@ enum BlinkState : uint8_t
 
 struct Blinker
 {
-    uint16_t default_on_ms = 200;
-    uint16_t default_off_ms = 200;
-    uint16_t default_pre_ms = 0;
-    uint16_t default_post_ms = 0;
+    uint8_t default_on_ms = 200;
+    uint8_t default_off_ms = 200;
+    uint8_t default_pre_ms = 0;
+    uint8_t default_post_ms = 0;
     bool default_resume_high = false;
 
-    uint8_t pin = 255;
-    uint16_t on_ms = 200;
-    uint16_t off_ms = 200;
-    uint16_t pre_ms = 0;
-    uint16_t post_ms = 0;
+    uint8_t on_ms = 200;
+    uint8_t off_ms = 200;
+    uint8_t pre_ms = 0;
+    uint8_t post_ms = 0;
     bool resume_high = false;
 
     BlinkState state = BL_IDLE;
@@ -117,11 +117,10 @@ struct Blinker
     uint32_t tmark = 0;
     bool use_pre = false;
 
-    void begin(uint8_t ledPin)
+    void begin()
     {
-        pin = ledPin;
-        pinMode(pin, OUTPUT);
-        digitalWrite(pin, LOW);
+        pinMode(LED_PIN, OUTPUT);
+        digitalWrite(LED_PIN, LOW);
         state = BL_IDLE;
         remaining = 0;
         tmark = 0;
@@ -144,9 +143,6 @@ struct Blinker
 
     void startEx(uint8_t count, uint16_t on, uint16_t off, uint16_t pre, uint16_t post, bool resumeHigh)
     {
-        if (pin == 255)
-            return;
-
         on_ms = on;
         off_ms = off;
         pre_ms = pre;
@@ -162,8 +158,7 @@ struct Blinker
 
     void stop()
     {
-        if (pin != 255)
-            digitalWrite(pin, LOW);
+        digitalWrite(LED_PIN, LOW);
         state = BL_IDLE;
         remaining = 0;
         use_pre = false;
@@ -185,7 +180,7 @@ struct Blinker
             uint16_t wait = use_pre ? pre_ms : off_ms;
             if ((now - tmark) >= wait)
             {
-                digitalWrite(pin, HIGH);
+                digitalWrite(LED_PIN, HIGH);
                 tmark = now;
                 state = BL_ON;
                 use_pre = false;
@@ -196,7 +191,7 @@ struct Blinker
         case BL_ON:
             if ((now - tmark) >= on_ms)
             {
-                digitalWrite(pin, LOW);
+                digitalWrite(LED_PIN, LOW);
                 tmark = now;
 
                 if (remaining > 0)
@@ -207,7 +202,7 @@ struct Blinker
                     state = (post_ms > 0) ? BL_POST : BL_IDLE;
                     if (state == BL_IDLE && resume_high)
                     {
-                        digitalWrite(pin, HIGH);
+                        digitalWrite(LED_PIN, HIGH);
                     }
                 }
                 else
@@ -221,9 +216,9 @@ struct Blinker
             if ((now - tmark) >= post_ms)
             {
                 if (resume_high)
-                    digitalWrite(pin, HIGH);
+                    digitalWrite(LED_PIN, HIGH);
                 else
-                    digitalWrite(pin, LOW);
+                    digitalWrite(LED_PIN, LOW);
                 state = BL_IDLE;
             }
             break;
