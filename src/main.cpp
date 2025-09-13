@@ -73,7 +73,7 @@ void loop()
       channel = channels[channelIdx];
       config.channel = channel;
       applyChannel();
-      blinker.startEx(channelIdx + 1, 200, 200, 200, 200, false);
+      blinker.startEx(channelIdx + 1, 200, 200, 200, 200, rfAudio.isStreaming());
       markConfigEdited();
     }
     // Volume toggle when encoder turned
@@ -91,7 +91,7 @@ void loop()
         config.volume = volume;
         applyVolume();
         markConfigEdited();
-        blinker.startEx(1, 20, 20, 0, 200, false);
+        blinker.startEx(1, 20, 20, 0, 200, rfAudio.isStreaming());
       }
     }
   }
@@ -147,7 +147,7 @@ void loop()
   }
 
   // Blink LED when radio is waiting
-  if (now >= nextBlinkAt && !blinker.active() && !isTx)
+  if (now >= nextBlinkAt && !blinker.active() && !isTx && !rfAudio.isStreaming())
   {
     bool isLow = lowBattery(now);
     blinker.startEx(isLow ? 2 : 1, 50, 50, 200, 0, false);

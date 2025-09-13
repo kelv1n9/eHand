@@ -86,6 +86,8 @@ public:
      */
     void receive();
 
+    bool isStreaming();
+
 private:
     RF24 &radio;
     void timerStart();
@@ -105,45 +107,4 @@ void TX();
  */
 void RX();
 
-#endif // __RF24Audio_H__
-
-/**
- * @example GettingStarted.ino
- * This sketch is intended to demonstrate the basic functionality of the audio library.
- */
-
-/**
- * @example Minimal.ino
- * This sketch is intended to demonstrate the most basic functionality of the audio library.
- */
-
-/**
- * @example PrivateChannels.ino
- * This sketch is demonstrates the use of private channels (node-to-node) in a multi-radio group.
- */
-
-/**
- * @example PrivateGroups.ino
- * This sketch is demonstrates the use of private groups (node-to-custom_groups) in a multi-radio group.
- */
-
-/**
- * @example USB_Audio.ino
- * This sketch is demonstrates how to interact with the audio library directly using the core
- * RF24 radio library: http://nRF24.github.io/RF24/
- */
-
-/**
- * @page Setup Boards & Wiring
- * @section Board Wiring
- * This page displays different options for wiring/board configuration.
- *
- * @image html "images/NRF1.jpg" height=25% width=25%
- *
- * Wiring diagram for DIY module connector. May not be needed depending on module:
- * @image html "images/RF24AudioBasic_LargeAntenna.jpg" height=45% width=45%
- * @image html "images/NRF2.jpg" height=20% width=20%
- * @image html "images/RF24AudioBasic_SmallAntenna.jpg" height=45% width=45%
- * Wiring diagram for SD streaming/multicast using TMRpcm library:
- * @image html "images/RF24Audio_FullSD.jpg" height=65% width=65%
- */
+#endif

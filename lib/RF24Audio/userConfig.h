@@ -23,10 +23,6 @@
 
 /************  OverRides  ************/
 
-// 10-bit audio requires more bandwidth. A 20khz sample rate will need 25KB/S transfer rate, which is about max for 250kbps data rate.
-// With a 32khz sample rate, the volume can be set to -1 to shift the sample down to 9-bit, which is the highest the timers can handle at 32khz
-// #define tenBit       // Enable 10-bit samples   Note: 44khz+ sample rate requires 8-bits per sample
-
 /**
  * @brief Indicator pin
  *
@@ -40,30 +36,7 @@
 /** The size of the memory buffer to use. Not really configurable (set to maximum by default). */
 #define buffSize 32
 
-// #define speakerTX               // Whether to output to speaker while transmitting
-// #define oversampling // Oversampling is recommended for low sample rates only. This only affects playback.
-// #define RX_ONLY
-// #define TX_ONLY // Not functional yet
-
 /************  Automated pin selections, override by defining above  ************/
-
-#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__) || (__AVR_ATmega32U4__) || (__AVR_AT90USB646__) || defined(__AVR_AT90USB1286__) || (__AVR_ATmega128__) || defined(__AVR_ATmega1281__) || defined(__AVR_ATmega2561__)
-#define rampMega
-
-// Speaker pin selection for mega etc
-#if !defined(speakerPin)
-#define speakerPin 11 // The pins to output audio on. (11,12 on Mega 2560)
-#endif
-
-#if !defined(speakerPin2)
-#define speakerPin2 12
-#endif
-
-#if defined(ENABLE_LED)
-#define ledPin 13
-#endif
-
-#else
 
 // Speaker selection for Uno,Nano, etc
 #if !defined(speakerPin)
@@ -71,14 +44,8 @@
 #define speakerPin 9
 #endif
 
-#if !defined(speakerPin2)
-/** The pin used to output audio on Nano */
-#define speakerPin2 10
-#endif
-
 #if defined(ENABLE_LED)
 #define ledPin 6
-#endif
 #endif
 
 //********Radio Defines ****************************

@@ -4,33 +4,23 @@
  * class & function definitions for RF24Audio library
  */
 
-#if ARDUINO < 100
-#include <WProgram.h>
-#else
 #include <Arduino.h>
-#endif
-
 #include <stddef.h>
-
 #include "RF24Audio.h"
 #include "RF24.h"
 #include <userConfig.h>
 
 //******* General Variables ************************
 #define RESOLUTION_BASE ((F_CPU) / 10)
-volatile boolean buffEmpty[2] = {true, true}, whichBuff = false, a, lCntr = 0, streaming = 0, transmitting = 0;
+volatile boolean buffEmpty[2] = {true, true};
+volatile boolean whichBuff = false;
+volatile boolean streaming = false;
 volatile byte buffCount = 0;
 volatile byte pauseCntr = 0;
+volatile byte bufCtr = 0;
 unsigned int intCount = 0;
 byte buffer[2][buffSize + 1];
 char volMod = -1;
-byte bitPos = 0, bytePos = 25;
-byte bytH;
-
-#if defined(tenBit)
-unsigned int sampl;
-byte bytL;
-#endif
 
 RF24 radi(0, 0);
 
@@ -40,6 +30,10 @@ RF24 radi(0, 0);
 
 /*****************************************************************************************************************************/
 /************************************************* General Section ***********************************************************/
+bool RF24Audio::isStreaming()
+{
+    return streaming;
+}
 
 RF24Audio::RF24Audio(RF24 &_radio) : radio(_radio)
 {
@@ -50,10 +44,10 @@ void RF24Audio::begin()
 {
     pinMode(speakerPin, OUTPUT);
 
-    radio.setAutoAck(0);                // Disable ACKnowledgement packets
-    radio.setCRCLength(RF24_CRC_8);     // Set CRC to 1 byte for speed
-    radio.openWritingPipe(pipes[0]);    // Set up reading and writing pipes. All of the radios write via multicast on the same pipe
-    radio.openReadingPipe(1, pipes[1]); // All of the radios listen by default to the same multicast pipe
+    radio.setAutoAck(0);                   // Disable ACKnowledgement packets
+    radio.setCRCLength(RF24_CRC_8); // Set CRC to 1 byte for speed
+    radio.openWritingPipe(pipes[0]);       // Set up reading and writing pipes. All of the radios write via multicast on the same pipe
+    radio.openReadingPipe(1, pipes[1]);    // All of the radios listen by default to the same multicast pipe
     radio.setRetries(0, 0);
 
     radio.startListening(); // NEED to start listening after opening a reading pipe
@@ -96,11 +90,7 @@ void rampDown()
     {
         for (unsigned int i = 0; i < ICR1; i++)
         {
-#if defined(rampMega)
             OCR1A = constrain((current - i), 0, ICR1);
-#else
-            OCR1A = constrain((current - i), 0, ICR1);
-#endif
             delayMicroseconds(100);
         }
     }
@@ -108,17 +98,6 @@ void rampDown()
 
 void rampUp(byte nextVal)
 {
-#if defined(rampMega)
-    unsigned int resolution = ICR1;
-
-    OCR1A = 0;
-    OCR1B = resolution;
-    for (int i = 0; i < resolution; ++i)
-    {
-        OCR1B = constrain(resolution - i, 0, resolution);
-    }
-#endif
-
     byte tmp = 200;
     unsigned int mod;
     if (volMod > 0)
@@ -176,8 +155,8 @@ void RF24Audio::receive()
 
 void handleRadio()
 {
-    if (buffEmpty[!whichBuff] && streaming)
-    { // If in RX mode and a buffer is empty, load it
+    if (buffEmpty[!whichBuff] && streaming) // If in RX mode and a buffer is empty, load it
+    {
         if (radi.available())
         {
             boolean n = !whichBuff;    // Grab the changing value of which buffer is not being read before enabling nested interrupts
@@ -201,13 +180,13 @@ void handleRadio()
             streaming = 0;           // Indicate that streaming is stopped
             TIMSK1 &= ~(_BV(TOIE1)); // Disable the TIMER1 overflow vector (playback)
 #if defined(ENABLE_LED)
-            TCCR0A &= ~_BV(COM0A1); // Disable the TIMER0 LED visualization
+            digitalWrite(ledPin, LOW);
 #endif
             TCCR1A &= ~_BV(COM1A1); // Disable speaker output
         }
     }
-    else if (!streaming)
-    { // If not actively reading a stream, read commands instead
+    else if (!streaming) // If not actively reading a stream, read commands instead
+    {
         if (radi.available())
         {                              // If a payload is available
             TIMSK1 &= ~_BV(ICIE1);     // Since this is called from an interrupt, disable it
@@ -215,24 +194,19 @@ void handleRadio()
             radi.read(&buffer[0], 32); // Read the payload into the buffer
             switch (buffer[0][0])
             { // Additional commands can be added here for controlling other things via radio command
-              // #if !defined(RX_ONLY)
               //             case 'r':
               //                 if (buffer[0][1] == 'R' && radioIdentifier < 2)
               //                 { // Switch to TX mode if we received the remote tx command and this is radio 0 or 1
               //                     TX();
               //                 }
               //                 break;
-              // #endif
             default:
-                streaming = 1; // If not a command, treat as audio data, enable streaming
-
+                streaming = 1;         // If not a command, treat as audio data, enable streaming
                 TCCR1A |= _BV(COM1A1); // Enable output to speaker pin
                 rampUp(buffer[0][31]); // Ramp up the speakers to prevent popping
-                // buffEmpty[0] = false;                            // Set the status of the memory buffers
-                // buffEmpty[1] = true;
-                TIMSK1 |= _BV(TOIE1); // Enable the overflow vector
+                TIMSK1 |= _BV(TOIE1);  // Enable the overflow vector
 #if defined(ENABLE_LED)
-                TCCR0A |= _BV(COM0A1); // Enable the LED visualization output
+                digitalWrite(ledPin, HIGH);
 #endif
                 break;
             }
@@ -248,12 +222,8 @@ void RX()
     ADCSRA = 0;
     ADCSRB = 0; // Disable Analog to Digital Converter (ADC)
     buffEmpty[0] = 1;
-    buffEmpty[1] = 1;                                  // Set the buffers to empty
-#if defined(oversampling)                              // If running the timer at double the sample rate
-    ICR1 = 10 * ((RESOLUTION_BASE / 2) / SAMPLE_RATE); // Set timer top for 2X oversampling
-#else
+    buffEmpty[1] = 1;                            // Set the buffers to empty
     ICR1 = 10 * (RESOLUTION_BASE / SAMPLE_RATE); // Timer running at normal sample rate speed
-#endif
 
     radi.openWritingPipe(pipes[0]); // Set up reading and writing pipes
     radi.openReadingPipe(1, pipes[1]);
@@ -261,27 +231,15 @@ void RX()
     TIMSK1 = _BV(ICIE1);   // Enable the capture interrupt vector (handles buffering and starting of playback)
 }
 
-boolean nn = 0;
-volatile byte bufCtr = 0;
-volatile unsigned int visCtr = 0;
-
 ISR(TIMER1_CAPT_vect)
 {
     // This interrupt checks for data at 1/16th the sample rate. Since there are 32 bytes per payload, it gets two chances for every payload
     bufCtr++;
-    visCtr++; // Keep track of how many times the interrupt has been triggered
 
     if (bufCtr >= 16)
     {                  // Every 16 times, do this
         handleRadio(); // Check for incoming radio data if not transmitting
-
-        bufCtr = 0; // Reset this counter
-
-        if (visCtr >= 32 && streaming)
-        {                                      // Run the visualisation at a much slower speed so we can see the changes better
-            OCR0A = buffer[whichBuff][0] << 2; // Adjust the TIMER0 compare match to change the PWM duty and thus the brightess of the LED
-            visCtr = 0;                        // Reset the visualization counter
-        }
+        bufCtr = 0;    // Reset this counter
     }
 }
 
@@ -289,25 +247,12 @@ ISR(TIMER1_CAPT_vect)
 ISR(TIMER1_OVF_vect)
 {
     // This interrupt vector loads received audio samples into the timer register
-
     if (buffEmpty[whichBuff])
     { // Return if both buffers are empty
         whichBuff = !whichBuff;
     }
     else
     {
-
-#if defined(oversampling)
-        // If running the timers at 2X speed, only load a new sample every 2nd time
-        if (lCntr)
-        {
-            lCntr = !lCntr;
-            return;
-        }
-        lCntr = !lCntr;
-#endif
-
-#if !defined(tenBit)
         /*************** Standard 8-Bit Audio Playback ********************/
         if (volMod < 0)
         {                                                         // Load an audio sample into the timer compare register
@@ -326,42 +271,6 @@ ISR(TIMER1_OVF_vect)
             buffEmpty[whichBuff] = true; // Indicate which buffer is empty
             whichBuff = !whichBuff;      // Switch buffers to read from
         }
-
-#else
-        /*************** 10 - bit Audio *************************************/
-        sampl = buffer[whichBuff][intCount];                             // Load 8bits of the sample into a temporary buffer
-        bitWrite(sampl, 8, bitRead(buffer[whichBuff][bytePos], bitPos)); // Read the 9th bit, and write it to the temporary buffer
-        bitPos++;                                                        // Keep track of the bit-position, since bits are loaded in bytes 25-31
-        bitWrite(sampl, 9, bitRead(buffer[whichBuff][bytePos], bitPos)); // Read the 10th bit, and write it to the temporary buffer
-        bitPos++;                                                        // Keep track of the bit-position
-
-        if (volMod < 0)
-        {                                   // Load an audio sample into the timer compare register
-            OCR1A = sampl >> (volMod * -1); // Output to speaker at a set volume
-        }
-        else
-        {
-            OCR1A = sampl << volMod;
-        }
-
-        if (bitPos >= 8)
-        { // If 8 bits have been read, reset the counter and switch to the next byte
-            bitPos = 0;
-            bytePos = bytePos + 1;
-        }
-
-        intCount++; // Keep track of how many samples have been loaded
-
-        if (intCount >= 25)
-        { // If the buffer is empty, do the following
-            bytePos = 25;
-            bitPos = 0;
-            intCount = 0;                // Reset the sample count
-            buffEmpty[whichBuff] = true; // Indicate which buffer is empty
-            whichBuff = !whichBuff;      // Switch buffers to read from
-        }
-
-#endif
     }
 }
 
@@ -370,32 +279,12 @@ ISR(TIMER1_OVF_vect)
 
 #if !defined(RX_ONLY) // If TX is enabled:
 
-// void RF24Audio::broadcast(byte radioID)
-// {
-//     if (radioID == radioIdentifier)
-//     {
-//         return;
-//     } // If trying to send to our own address, return
-
-//     noInterrupts(); // Disable interrupts during change of transmission address
-
-//     if (radioID == broadcastVal)
-//     {
-//         radio.openWritingPipe(pipes[1]); // Use the public multicast pipe
-//     }
-//     else
-//     {
-//         radio.openWritingPipe(pipes[radioID + 2]); // Open a pipe to the specified radio(s). If two or more radios share the same ID,
-//     } // they will receive the same single broadcasts, but will not be able to initiate
-//     interrupts(); // private communication betwen each other
-// }
-
 // Transmission sending interrupt
 ISR(TIMER1_COMPA_vect)
 { // This interrupt vector sends the samples when a buffer is filled
     if (buffEmpty[!whichBuff] == 0)
     {                                           // If a buffer is ready to be sent
-        a = !whichBuff;                         // Get the buffer # before allowing nested interrupts
+        boolean a = !whichBuff;                 // Get the buffer # before allowing nested interrupts
         TIMSK1 &= ~(_BV(OCIE1A));               // Disable this interrupt vector
         sei();                                  // Enable global interrupts
         radi.startFastWrite(&buffer[a], 32, 1); // Do an IRQ friendly radio write
@@ -406,65 +295,14 @@ ISR(TIMER1_COMPA_vect)
 }
 
 // Transmission buffering interrupt
-ISR(TIMER1_COMPB_vect)
-{ // This interrupt vector captures the ADC values and stores them in a buffer
+ISR(TIMER1_COMPB_vect) // This interrupt vector captures the ADC values and stores them in a buffer
+{
+    // 8-bit samples
+    buffer[whichBuff][buffCount] = ADCH; // Read the high byte of the ADC register into the buffer for 8-bit samples
+    buffCount++;                         // Keep track of how many samples have been loaded
 
-#if !defined(tenBit)
-  // 8-bit samples
-    buffer[whichBuff][buffCount] = bytH = ADCH; // Read the high byte of the ADC register into the buffer for 8-bit samples
-
-#if defined(speakerTX)
-                                                // If output to speaker while transmitting is enabled
-    if (volMod < 0)
+    if (buffCount >= 32) // In 8-bit mode, do this every 32 samples
     {
-        OCR1A = bytH >> (volMod * -1);
-    } // Output to speaker at a set volume if defined
-    else
-    {
-        OCR1A = bytH << volMod;
-    }
-#endif // defined (speakerTX)
-
-#else // 10-bit samples are a little more complicated, but offer better quality for lower sample rates
-    buffer[whichBuff][buffCount] = bytL = ADCL; // In 10-bit mode, the ADC register is right-adjusted, we need to read the low, then high byte each time
-    bytH = ADCH;
-    bitWrite(buffer[whichBuff][bytePos], bitPos, bitRead(bytH, 0));     // The low bytes are stored in the first 25 bytes of the payload. The additional 2 bits are stored in
-    bitWrite(buffer[whichBuff][bytePos], bitPos + 1, bitRead(bytH, 1)); // pairs in the remaining bytes #25 to 31. Read the first and 2nd bits of the high register into the payload.
-    bitPos += 2;
-    if (bitPos >= 8)
-    {
-        bitPos = 0;
-        bytePos = bytePos + 1;
-    } // Every time a byte is full, increase byte position by 1 and reset the bit count.
-
-#if defined(speakerTX)
-    // If output to speaker while transmitting is enabled
-    sampl = bytL;       // Load the two bytes into the 2-byte unsigned integer. Low byte first
-    sampl |= bytH << 8; // Shift the high byte 8bits and load it into the unsigned int using an OR comparison
-    if (volMod < 0)
-    {
-        OCR1A = sampl >> (volMod * -1);
-    } // Output to speaker at a set volume if defined
-    else
-    {
-        OCR1A = sampl << volMod;
-    }
-#endif // defined (speakerTX)
-#endif // defined (tenBit)
-
-    buffCount++; // Keep track of how many samples have been loaded
-
-#if !defined(tenBit)
-    if (buffCount >= 32)
-    { // In 8-bit mode, do this every 32 samples
-
-#else // 10-bit mode
-    if (buffCount >= 25)
-    {                 // In 10-bit mode, do this every 25 samples
-        bytePos = 25; // Reset the position for the extra 2 bits to the 25th byte
-        bitPos = 0;   // Reset the bit position for the extra 2 bits
-#endif
-
         // Both modes
         buffCount = 0;             // Reset the sample counter
         buffEmpty[!whichBuff] = 0; // Indicate which bufffer is ready to send
@@ -476,7 +314,8 @@ void TX()
 {
     TIMSK1 &= ~(_BV(ICIE1) | _BV(TOIE1)); // Disable the receive interrupts
 #if defined(ENABLE_LED)
-    TCCR0A &= ~_BV(COM0A1); // Disable LED visualization
+    // TCCR0A &= ~_BV(COM0A1); // Disable LED visualization
+    digitalWrite(ledPin, LOW);
 #endif
     radi.stopListening();           // Enter transmit mode on the radio
     radi.openWritingPipe(pipes[1]); // Set up reading and writing pipes
@@ -521,19 +360,14 @@ void TX()
 
     ICR1 = 10 * (RESOLUTION_BASE / SAMPLE_RATE); // Timer counts from 0 to this value
 
-#if !defined(speakerTX)
     // If disabling/enabling the speaker, ramp it down
     rampDown();
     TCCR1A &= ~(_BV(COM1A1)); // Disable output to speaker
-#endif
 
-#if !defined(tenBit)
     ADMUX |= _BV(ADLAR); // Left-shift result so only high byte needs to be read
-#else
-    ADMUX &= ~_BV(ADLAR); // Don't left-shift result in 10-bit mode
-#endif
 
     ADCSRB |= _BV(ADTS0) | _BV(ADTS0) | _BV(ADTS2); // Attach ADC start to TIMER1 Capture interrupt flag
+
     byte prescaleByte = 0;
 
     if (SAMPLE_RATE < 8900)
