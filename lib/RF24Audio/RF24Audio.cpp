@@ -218,10 +218,11 @@ void handleRadio()
               //                 }
               //                 break;
             default:
-                streaming = 1;         // If not a command, treat as audio data, enable streaming
-                TCCR1A |= _BV(COM1A1); // Enable output to speaker pin
-                rampUp(buffer[0][31]); // Ramp up the speakers to prevent popping
-                TIMSK1 |= _BV(TOIE1);  // Enable the overflow vector
+                streaming = 1;               // If not a command, treat as audio data, enable streaming
+                pinMode(speakerPin, OUTPUT); // Enable the speaker pin
+                TCCR1A |= _BV(COM1A1);       // Enable output to speaker pin
+                rampUp(buffer[0][31]);       // Ramp up the speakers to prevent popping
+                TIMSK1 |= _BV(TOIE1);        // Enable the overflow vector
 #if defined(ENABLE_LED)
                 digitalWrite(ledPin, HIGH);
 #endif
@@ -352,6 +353,7 @@ void TX()
     ICR1 = 10 * (RESOLUTION_BASE / SAMPLE_RATE);    // Timer counts from 0 to this value
     rampDown();                                     // If disabling/enabling the speaker, ramp it down
     TCCR1A &= ~(_BV(COM1A1));                       // Disable output to speaker
+    pinMode(speakerPin, INPUT);                     // Disable the speaker pin
     ADMUX |= _BV(ADLAR);                            // Left-shift result so only high byte needs to be read
     ADCSRB |= _BV(ADTS0) | _BV(ADTS0) | _BV(ADTS2); // Attach ADC start to TIMER1 Capture interrupt flag
     ADCSRA = prescaleByte;                          // Adjust sampling rate of ADC depending on sample rate
