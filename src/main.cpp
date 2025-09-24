@@ -28,10 +28,16 @@ void setup()
   rfAudio.begin();
   blinker.begin();
 
+  if (encoder.readBtn())
+  {
+    disableLed = true;
+    blinker.setEnabled(!disableLed);
+  }
+
   uint16_t volts = vcc.Read_Volts() * 1000;
   DBG("Battery: %u mV\n", volts);
 
-  if(volts > MID_BATT_VOLT)
+  if (volts > MID_BATT_VOLT)
     blinker.startEx(1, 50, 50, 500, 0, false);
   else if (volts > LOW_BATT_VOLT && volts <= MID_BATT_VOLT)
     blinker.startEx(2, 50, 50, 500, 0, false);
@@ -127,7 +133,7 @@ void loop()
     if (!isTx && !pttLocked)
     {
       rfAudio.transmit();
-      digitalWrite(LED_PIN, HIGH);
+      digitalWrite(LED_PIN, disableLed ? LOW : HIGH);
       isTx = true;
       DBG("Transmitting...\n");
     }

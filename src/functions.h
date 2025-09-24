@@ -85,6 +85,7 @@ uint32_t configLastChangeTime = 0;
 
 bool isTx = false;
 bool pttLocked = false;
+bool disableLed = false;
 uint8_t channelIdx = 0;
 uint8_t channel = channels[channelIdx];
 uint8_t volume = 4;
@@ -101,22 +102,24 @@ enum BlinkState : uint8_t
 
 struct Blinker
 {
-    uint8_t default_on_ms = 200;
-    uint8_t default_off_ms = 200;
-    uint8_t default_pre_ms = 0;
-    uint8_t default_post_ms = 0;
+    uint16_t default_on_ms = 200;
+    uint16_t default_off_ms = 200;
+    uint16_t default_pre_ms = 0;
+    uint16_t default_post_ms = 0;
     bool default_resume_high = false;
 
-    uint8_t on_ms = 200;
-    uint8_t off_ms = 200;
-    uint8_t pre_ms = 0;
-    uint8_t post_ms = 0;
+    uint16_t on_ms = 200;
+    uint16_t off_ms = 200;
+    uint16_t pre_ms = 0;
+    uint16_t post_ms = 0;
     bool resume_high = false;
 
     BlinkState state = BL_IDLE;
     uint8_t remaining = 0;
     uint32_t tmark = 0;
     bool use_pre = false;
+
+    bool enabled = true;
 
     void begin()
     {
@@ -126,6 +129,22 @@ struct Blinker
         remaining = 0;
         tmark = 0;
         use_pre = false;
+    }
+
+    void setEnabled(bool en)
+    {
+        if (enabled == en)
+            return;
+
+        enabled = en;
+
+        if (!enabled)
+        {
+            digitalWrite(LED_PIN, LOW);
+            state = BL_IDLE;
+            remaining = 0;
+            use_pre = false;
+        }
     }
 
     void setDefaults(uint16_t on, uint16_t off, uint16_t pre, uint16_t post, bool resumeHigh)
@@ -144,6 +163,11 @@ struct Blinker
 
     void startEx(uint8_t count, uint16_t on, uint16_t off, uint16_t pre, uint16_t post, bool resumeHigh)
     {
+        if (!enabled)
+        {
+            return;
+        }
+
         on_ms = on;
         off_ms = off;
         pre_ms = pre;
@@ -169,6 +193,18 @@ struct Blinker
 
     void tick()
     {
+        if (!enabled)
+        {
+            if (state != BL_IDLE)
+            {
+                digitalWrite(LED_PIN, LOW);
+                state = BL_IDLE;
+                remaining = 0;
+                use_pre = false;
+            }
+            return;
+        }
+
         if (state == BL_IDLE)
             return;
 
