@@ -53,7 +53,8 @@ D5 - Encoder switch
 #define CE_PIN 7
 
 // CONSTANTS
-#define LOW_BATT_VOLT 3800
+#define LOW_BATT_VOLT 3600
+#define MID_BATT_VOLT 3900
 #define BATT_SAMPLE_MS 20000
 #define LED_BLINK_MS 10000
 #define SAVE_DELAY_MS 10000
@@ -229,7 +230,7 @@ struct Blinker
     }
 } blinker;
 
-bool lowBattery(uint32_t now)
+bool islowBattery(uint32_t now)
 {
     static bool low = false;
     static uint32_t nextSampleAt = 0;

@@ -27,6 +27,20 @@ void setup()
   loadSettings();
   rfAudio.begin();
   blinker.begin();
+
+  uint16_t volts = vcc.Read_Volts() * 1000;
+  DBG("Battery: %u mV\n", volts);
+
+  if(volts > MID_BATT_VOLT)
+    blinker.startEx(1, 50, 50, 500, 0, false);
+  else if (volts > LOW_BATT_VOLT && volts <= MID_BATT_VOLT)
+    blinker.startEx(2, 50, 50, 500, 0, false);
+  else
+    blinker.startEx(3, 50, 50, 500, 0, false);
+
+  // while (millis() < 2000) {
+  //   blinker.tick();
+  // }
 }
 
 void loop()
@@ -142,7 +156,7 @@ void loop()
   // Blink LED when radio is waiting
   if (now >= nextBlinkAt && !blinker.active() && !isTx && !rfAudio.isStreaming())
   {
-    bool isLow = lowBattery(now);
+    bool isLow = islowBattery(now);
     blinker.startEx(isLow ? 2 : 1, 50, 50, 200, 0, false);
     nextBlinkAt = now + LED_BLINK_MS;
   }
