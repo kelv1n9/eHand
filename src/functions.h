@@ -89,6 +89,7 @@ bool disableLed = false;
 uint8_t channelIdx = 0;
 uint8_t channel = channels[channelIdx];
 uint8_t volume = 4;
+uint8_t maxVolume = 4;
 uint8_t dataRateIdx = 1;
 uint8_t txPowerIdx = 2;
 
@@ -266,7 +267,7 @@ struct Blinker
     }
 } blinker;
 
-bool islowBattery(uint32_t now)
+bool isLowBattery(uint32_t now)
 {
     static bool low = false;
     static uint32_t nextSampleAt = 0;

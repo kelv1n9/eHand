@@ -14,6 +14,9 @@ Controls:
 
 #include "functions.h"
 
+// TODO: Listen-Before-Talk
+
+
 void setup()
 {
 #ifdef DEBUG_eHand
@@ -28,11 +31,15 @@ void setup()
   rfAudio.begin();
   blinker.begin();
 
+  // Invisible mode
   if (encoder.readBtn())
   {
     disableLed = true;
+    maxVolume = 5;
+    volume = 3;
+    applyVolume();
     blinker.setEnabled(!disableLed);
-    DBG("LED is disabled");
+    DBG("Invisible mode is enabled");
   }
 
   delay(300);
@@ -41,7 +48,7 @@ void setup()
 
   if (volts > MID_BATT_VOLT)
     blinker.startEx(1, 50, 50, 0, 2000, false);
-  else if (volts > LOW_BATT_VOLT && volts <= MID_BATT_VOLT)
+  else if (volts > LOW_BATT_VOLT)
     blinker.startEx(2, 50, 50, 0, 2000, false);
   else
     blinker.startEx(3, 50, 50, 0, 2000, false);
@@ -94,8 +101,8 @@ void loop()
       int new_volume = (int)volume + encoder.dir();
       if (new_volume < 0)
         new_volume = 0;
-      if (new_volume > 7)
-        new_volume = 7;
+      if (new_volume > maxVolume)
+        new_volume = maxVolume;
 
       if (new_volume != volume)
       {
@@ -160,7 +167,7 @@ void loop()
   // Blink LED when radio is waiting
   if (now >= nextBlinkAt && !blinker.active() && !isTx && !rfAudio.isStreaming())
   {
-    bool isLow = islowBattery(now);
+    bool isLow = isLowBattery(now);
     blinker.startEx(isLow ? 2 : 1, 50, 50, 200, 0, false);
     nextBlinkAt = now + LED_BLINK_MS;
   }
