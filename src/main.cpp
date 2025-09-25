@@ -32,21 +32,19 @@ void setup()
   {
     disableLed = true;
     blinker.setEnabled(!disableLed);
+    DBG("LED is disabled");
   }
 
+  delay(300);
   uint16_t volts = vcc.Read_Volts() * 1000;
   DBG("Battery: %u mV\n", volts);
 
   if (volts > MID_BATT_VOLT)
-    blinker.startEx(1, 50, 50, 500, 0, false);
+    blinker.startEx(1, 50, 50, 0, 2000, false);
   else if (volts > LOW_BATT_VOLT && volts <= MID_BATT_VOLT)
-    blinker.startEx(2, 50, 50, 500, 0, false);
+    blinker.startEx(2, 50, 50, 0, 2000, false);
   else
-    blinker.startEx(3, 50, 50, 500, 0, false);
-
-  // while (millis() < 2000) {
-  //   blinker.tick();
-  // }
+    blinker.startEx(3, 50, 50, 0, 2000, false);
 }
 
 void loop()
