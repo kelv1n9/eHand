@@ -3,6 +3,7 @@
 #include <RF24.h>
 #include <RF24Audio.h>
 #include "EncButton.h"
+#include <TimerFreeTone.h>
 #include <EEPROM.h>
 #include <Vcc.h>
 
@@ -83,13 +84,16 @@ Settings config;
 bool isConfigEdited = false;
 uint32_t configLastChangeTime = 0;
 
+bool prevStreaming = false;
+bool rogerLock = false;
+
 bool isTx = false;
 bool pttLocked = false;
-bool disableLed = false;
+bool isInvisibleMode = false;
 uint8_t channelIdx = 0;
 uint8_t channel = channels[channelIdx];
 uint8_t volume = 4;
-uint8_t maxVolume = 4;
+uint8_t maxVolume = 7;
 uint8_t dataRateIdx = 1;
 uint8_t txPowerIdx = 2;
 
@@ -384,10 +388,17 @@ void loadSettings()
 
 void saveSettings()
 {
-    if (isConfigEdited && (millis() - configLastChangeTime >= SAVE_DELAY_MS))
+    if (!isInvisibleMode && isConfigEdited && (millis() - configLastChangeTime >= SAVE_DELAY_MS))
     {
         EEPROM.put(0, config);
         isConfigEdited = false;
         DBG("Settings saved to EEPROM\n");
     }
+}
+
+void playRogerBeep()
+{
+    TimerFreeTone(9, 1123, 80, 1);
+    delay(10);
+    TimerFreeTone(9, 865, 80, 1);
 }

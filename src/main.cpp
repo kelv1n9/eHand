@@ -14,9 +14,6 @@ Controls:
 
 #include "functions.h"
 
-// TODO: Listen-Before-Talk
-
-
 void setup()
 {
 #ifdef DEBUG_eHand
@@ -34,12 +31,18 @@ void setup()
   // Invisible mode
   if (encoder.readBtn())
   {
-    disableLed = true;
-    maxVolume = 5;
-    volume = 3;
+    encoder.reset();
+    isInvisibleMode = true;
+    maxVolume = 3;
+    volume = 1;
+    dataRateIdx = 0; // MIN
+    txPowerIdx = 3;  // MAX
+
+    applyDataRate();
+    applyTxPower();
     applyVolume();
-    blinker.setEnabled(!disableLed);
-    DBG("Invisible mode is enabled");
+    blinker.setEnabled(!isInvisibleMode);
+    DBG("Invisible mode is enabled\n");
   }
 
   delay(300);
@@ -138,7 +141,7 @@ void loop()
     if (!isTx && !pttLocked)
     {
       rfAudio.transmit();
-      digitalWrite(LED_PIN, disableLed ? LOW : HIGH);
+      digitalWrite(LED_PIN, isInvisibleMode ? LOW : HIGH);
       isTx = true;
       DBG("Transmitting...\n");
     }
@@ -171,6 +174,18 @@ void loop()
     blinker.startEx(isLow ? 2 : 1, 50, 50, 200, 0, false);
     nextBlinkAt = now + LED_BLINK_MS;
   }
+
+  // Roger beep
+  if (prevStreaming && !rfAudio.isStreaming() && !rogerLock)
+  {
+    rogerLock = true;
+    playRogerBeep();
+  }
+  if (!prevStreaming && rfAudio.isStreaming())
+  {
+    rogerLock = false;
+  }
+  prevStreaming = rfAudio.isStreaming();
 
   blinker.tick();
   saveSettings();
