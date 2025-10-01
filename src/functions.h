@@ -42,7 +42,7 @@ D5 - Encoder switch
 */
 
 #define NAME "eHand"
-#define VERSION "1.0.0"
+#define VERSION "2.0.0"
 
 // PINS
 #define LED_PIN 6
@@ -78,6 +78,7 @@ struct Settings
     uint8_t volume;
     uint8_t dataRateIdx;
     uint8_t txPowerIdx;
+    uint8_t rogerEnabled;
 };
 
 Settings config;
@@ -86,6 +87,7 @@ uint32_t configLastChangeTime = 0;
 
 bool prevStreaming = false;
 bool rogerLock = false;
+bool rogerEnabled = true;
 
 bool isTx = false;
 bool pttLocked = false;
@@ -364,7 +366,8 @@ void loadSettings()
     bool ok = (config.volume <= 7) &&
               (config.dataRateIdx <= 2) &&
               channelOk &&
-              (config.txPowerIdx <= 3);
+              (config.txPowerIdx <= 3) &&
+              (config.rogerEnabled <= 1);
 
     if (!ok)
     {
@@ -372,6 +375,7 @@ void loadSettings()
         config.dataRateIdx = dataRateIdx;
         config.channel = channel;
         config.txPowerIdx = txPowerIdx;
+        config.rogerEnabled = rogerEnabled ? 1 : 0;
         EEPROM.put(0, config);
     }
 
@@ -379,6 +383,7 @@ void loadSettings()
     dataRateIdx = config.dataRateIdx;
     channel = config.channel;
     txPowerIdx = config.txPowerIdx;
+    rogerEnabled = (config.rogerEnabled != 0);
 
     applyChannel();
     applyDataRate();

@@ -77,8 +77,8 @@ void loop()
       idx = 0;
     config.txPowerIdx = txPowerIdx = (uint8_t)idx;
     applyTxPower();
-    blinker.startEx(txPowerIdx + 1, 200, 200, 200, 200, true);
     markConfigEdited();
+    blinker.startEx(txPowerIdx + 1, 200, 200, 200, 200, true);
   }
   else if (!PTT.pressing() && encoder.turn())
   {
@@ -95,8 +95,8 @@ void loop()
       channelIdx = (uint8_t)newIndex;
       config.channel = channel = channels[channelIdx];
       applyChannel();
-      blinker.startEx(channelIdx + 1, 200, 200, 200, 200, rfAudio.isStreaming());
       markConfigEdited();
+      blinker.startEx(channelIdx + 1, 200, 200, 200, 200, rfAudio.isStreaming());
     }
     // Volume toggle when encoder turned
     else if (!isTx)
@@ -117,28 +117,42 @@ void loop()
     }
   }
 
-  // Rate toggle on encoder click
-  if (encoder.click())
+  if (PTT.pressing() && encoder.hasClicks())
   {
-    if (PTT.pressing())
-    {
-      pttLocked = true;
-      DBG("PTT Locked\n");
-    }
-    else if (!isTx)
+    pttLocked = true;
+    blinker.startEx(rogerEnabled ? 1 : 2, 120, 120, 0, 0, true);
+    DBG("PTT Locked\n");
+  }
+
+  if (!PTT.pressing() && !isTx && encoder.hasClicks())
+  {
+    uint8_t nClicks = encoder.getClicks();
+
+    // Rate toggle on encoder click
+    if (nClicks == 1)
     {
       dataRateIdx = (dataRateIdx + 1) % 3;
       config.dataRateIdx = dataRateIdx;
       applyDataRate();
-      blinker.startEx(dataRateIdx + 1, 200, 200, 200, 200, false);
       markConfigEdited();
+      blinker.startEx(dataRateIdx + 1, 200, 200, 200, 200, false);
+    }
+    // Roger Beep toggle on encoder double click
+    else if (nClicks == 2)
+    {
+      rogerEnabled = !rogerEnabled;
+      config.rogerEnabled = rogerEnabled ? 1 : 0;
+      markConfigEdited();
+      blinker.startEx(rogerEnabled ? 1 : 2, 120, 120, 0, 0, false);
+      DBG("Roger beep: %s\n", rogerEnabled ? "ON" : "OFF");
     }
   }
 
   // Start Transmitting while PTT hold
   if (PTT.press())
   {
-    if (!isTx && !pttLocked)
+    // Transmit if not receiving
+    if (!rfAudio.isStreaming() && !isTx && !pttLocked)
     {
       rfAudio.transmit();
       digitalWrite(LED_PIN, isInvisibleMode ? LOW : HIGH);
@@ -176,7 +190,7 @@ void loop()
   }
 
   // Roger beep
-  if (prevStreaming && !rfAudio.isStreaming() && !rogerLock)
+  if (rogerEnabled && prevStreaming && !rfAudio.isStreaming() && !rogerLock)
   {
     rogerLock = true;
     playRogerBeep();

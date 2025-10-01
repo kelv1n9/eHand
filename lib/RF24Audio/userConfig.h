@@ -16,7 +16,7 @@
  * - RF24_2MBPS for higher.
  * @note 44khz+ sample rate requires 8-bits per sample
  */
-#define SAMPLE_RATE 16000
+#define SAMPLE_RATE 10000
 
 /** @brief The pin that analog readings will be taken from (microphone pin) */
 #define ANALOG_PIN A0
