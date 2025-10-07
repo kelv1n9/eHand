@@ -97,4 +97,7 @@ void TX();
  */
 void RX();
 
+void RF24Audio_setBeaconMode(bool enabled);
+void RF24Audio_setBeaconTone(uint16_t hz);
+
 #endif

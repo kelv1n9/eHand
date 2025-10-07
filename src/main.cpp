@@ -65,6 +65,18 @@ void loop()
   uint32_t now = millis();
   static uint32_t nextBlinkAt;
 
+  if (beacon.enabled)
+  {
+    if (encoder.hold())
+    {
+      beacon.exit();
+      return;
+    }
+    beacon.tick();
+    blinker.tick();
+    return;
+  }
+
   // Power toggle when encoder turned while PTT held
   if (PTT.pressing() && encoder.turn())
   {
@@ -145,6 +157,12 @@ void loop()
       markConfigEdited();
       blinker.startEx(rogerEnabled ? 1 : 2, 120, 120, 0, 0, false);
       DBG("Roger beep: %s\n", rogerEnabled ? "ON" : "OFF");
+    }
+    // Beacon mode
+    else if (nClicks == 3 && !beacon.enabled)
+    {
+      beacon.enter();
+      return;
     }
   }
 

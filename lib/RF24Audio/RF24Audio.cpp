@@ -12,6 +12,9 @@
 
 //******* General Variables ************************
 #define RESOLUTION_BASE ((F_CPU) / 10)
+volatile uint16_t g_phase = 0;
+volatile uint16_t g_phaseStep = 1;
+volatile bool g_beaconMode = false;
 volatile boolean buffEmpty[2] = {true, true};
 volatile boolean whichBuff = false;
 volatile boolean streaming = false;
@@ -32,6 +35,25 @@ RF24 radi(0, 0);
 
 /*****************************************************************************************************************************/
 /************************************************* General Section ***********************************************************/
+
+void RF24Audio_setBeaconMode(bool enabled)
+{
+    noInterrupts();
+    g_beaconMode = enabled;
+    g_phase = 0;
+    interrupts();
+}
+
+void RF24Audio_setBeaconTone(uint16_t hz)
+{
+    uint32_t step = (((uint32_t)hz << 16) + (SAMPLE_RATE / 2)) / (uint32_t)SAMPLE_RATE;
+    if (step == 0)
+        step = 1;
+    noInterrupts();
+    g_phaseStep = (uint16_t)step;
+    interrupts();
+}
+
 bool RF24Audio::isStreaming()
 {
     return streaming;
@@ -316,8 +338,16 @@ ISR(TIMER1_COMPA_vect)
 ISR(TIMER1_COMPB_vect) // This interrupt vector captures the ADC values and stores them in a buffer
 {
     // 8-bit samples
-    buffer[whichBuff][buffCount] = ADCH; // Read the high byte of the ADC register into the buffer for 8-bit samples
-    buffCount++;                         // Keep track of how many samples have been loaded
+    if (g_beaconMode)
+    {
+        g_phase += g_phaseStep;
+        buffer[whichBuff][buffCount] = (g_phase & 0x8000) ? 255 : 0;
+    }
+    else
+    {
+        buffer[whichBuff][buffCount] = ADCH;
+    }
+    buffCount++;
 
     if (buffCount >= 32) // In 8-bit mode, do this every 32 samples
     {

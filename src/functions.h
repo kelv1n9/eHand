@@ -60,6 +60,11 @@ D5 - Encoder switch
 #define LED_BLINK_MS 10000
 #define SAVE_DELAY_MS 10000
 
+// Beacon
+#define BEACON_ON_MS 300
+#define BEACON_OFF_MS 1700
+#define BEACON_TONE 600
+
 const uint8_t channels[] = {90, 100, 110};
 #define CHANNEL_COUNT (sizeof(channels) / sizeof(channels[0]))
 
@@ -196,7 +201,7 @@ struct Blinker
         use_pre = false;
     }
 
-    bool active() const { return state != BL_IDLE; }
+    bool active() { return state != BL_IDLE; }
 
     void tick()
     {
@@ -407,3 +412,69 @@ void playRogerBeep()
     delay(10);
     TimerFreeTone(9, 865, 80, 1);
 }
+
+struct Beacon
+{
+    enum Phase : uint8_t
+    {
+        IDLE,
+        BURST,
+        GAP
+    } phase = IDLE;
+    bool enabled = false;
+    uint32_t t0 = 0;
+
+    void startBurst()
+    {
+        RF24Audio_setBeaconTone(BEACON_TONE);
+        RF24Audio_setBeaconMode(true);
+        rfAudio.transmit();
+        isTx = true;
+        phase = BURST;
+        t0 = millis();
+        blinker.startEx(1, BEACON_ON_MS, BEACON_OFF_MS, 0, 0, false);
+        DBG("Sending beacon...\n");
+    }
+
+    void stopBurst()
+    {
+        rfAudio.receive();
+        RF24Audio_setBeaconMode(false);
+        isTx = false;
+        phase = GAP;
+        t0 = millis();
+    }
+
+    void enter()
+    {
+        enabled = true;
+        startBurst();
+        blinker.startEx(3, 50, 50, 0, 0, false);
+        DBG("Started beacon mode\n");
+    }
+
+    void exit()
+    {
+        rfAudio.receive();
+        RF24Audio_setBeaconMode(false);
+        enabled = false;
+        isTx = false;
+        blinker.stop();
+        phase = IDLE;
+        DBG("Exiting beacon mode\n");
+    }
+
+    void tick()
+    {
+        uint32_t dt = millis() - t0;
+
+        if (phase == BURST && dt >= BEACON_ON_MS)
+        {
+            stopBurst();
+        }
+        else if (phase == GAP && dt >= BEACON_OFF_MS)
+        {
+            startBurst();
+        }
+    }
+} beacon;
