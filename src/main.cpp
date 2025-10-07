@@ -76,6 +76,17 @@ void loop()
     blinker.tick();
     return;
   }
+  else if (parrot.enabled)
+  {
+    if (encoder.hold())
+    {
+      parrot.toggle();
+      return;
+    }
+    parrot.tick();
+    blinker.tick();
+    return;
+  }
 
   // Power toggle when encoder turned while PTT held
   if (PTT.pressing() && encoder.turn())
@@ -162,6 +173,11 @@ void loop()
     else if (nClicks == 3 && !beacon.enabled)
     {
       beacon.enter();
+      return;
+    }
+    else if (nClicks == 4 && !parrot.enabled)
+    {
+      parrot.toggle();
       return;
     }
   }

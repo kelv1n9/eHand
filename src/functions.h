@@ -478,3 +478,93 @@ struct Beacon
         }
     }
 } beacon;
+
+enum ParrotState
+{
+    P_IDLE,
+    P_MEASURE,
+    P_COOLDOWN,
+    P_PLAY
+};
+
+struct Parrot
+{
+    uint32_t minDur = 50;
+    uint32_t cooldown = 500;
+
+    bool enabled = false;
+    ParrotState state = P_IDLE;
+    uint32_t t_on;
+    uint32_t t_play;
+    uint32_t t_dur;
+
+    void toggle()
+    {
+        enabled = !enabled;
+        state = P_IDLE;
+        rfAudio.receive();
+        blinker.startEx(4, 50, 50, 0, 0, false);
+        DBG("Parrot %s\n", enabled ? "ON" : "OFF");
+    }
+
+    void tick()
+    {
+        uint32_t now = millis();
+
+        switch (state)
+        {
+        case P_IDLE:
+            if (rfAudio.isStreaming())
+            {
+                t_on = now;
+                state = P_MEASURE;
+                digitalWrite(LED_PIN, HIGH);
+                DBG("[MEASURE] RX start: %lu ms\n", now);
+            }
+            break;
+
+        case P_MEASURE:
+            if (!rfAudio.isStreaming())
+            {
+                uint32_t dur = now - t_on;
+                DBG("[MEASURE] RX end: %lu ms, dur=%lu ms\n", now, dur);
+                if (dur >= minDur)
+                {
+                    t_dur = dur;
+                    t_on = now + cooldown;
+                    state = P_COOLDOWN;
+                    DBG("[COOLDOWN] wait=%lu ms, TX dur=%lu ms\n", cooldown, t_dur);
+                }
+                else
+                {
+                    state = P_IDLE;
+                    DBG("[MEASURE] ignored (short)\n");
+                }
+
+                digitalWrite(LED_PIN, LOW);
+            }
+            break;
+
+        case P_COOLDOWN:
+            if (now >= t_on)
+            {
+                rfAudio.transmit();
+                t_play = now + t_dur;
+                state = P_PLAY;
+                digitalWrite(LED_PIN, HIGH);
+                DBG("[PLAY] TX start: %lu ms, dur=%lu ms\n", now, t_dur);
+            }
+            break;
+
+        case P_PLAY:
+            if (now >= t_play)
+            {
+                rfAudio.receive();
+                state = P_IDLE;
+                digitalWrite(LED_PIN, LOW);
+                DBG("[PLAY] TX end: %lu ms\n", now);
+            }
+            break;
+        }
+    }
+} parrot;
