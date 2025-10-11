@@ -42,7 +42,7 @@ D5 - Encoder switch
 */
 
 #define NAME "eHand"
-#define VERSION "2.0.0"
+#define VERSION "2.1.0"
 
 // PINS
 #define LED_PIN 6
@@ -68,7 +68,6 @@ D5 - Encoder switch
 const uint8_t channels[] = {90, 100, 110};
 #define CHANNEL_COUNT (sizeof(channels) / sizeof(channels[0]))
 
-// TODO: Add calibration
 Vcc vcc(1);
 
 Button PTT(PTT_BUTTON_PIN);
@@ -449,7 +448,7 @@ struct Beacon
     {
         enabled = true;
         startBurst();
-        blinker.startEx(3, 50, 50, 0, 0, false);
+        blinker.startEx(3, 100, 100, 0, 0, false);
         DBG("Started beacon mode\n");
     }
 
@@ -503,7 +502,7 @@ struct Parrot
         enabled = !enabled;
         state = P_IDLE;
         rfAudio.receive();
-        blinker.startEx(4, 50, 50, 0, 0, false);
+        blinker.startEx(4, 100, 100, 0, 0, false);
         DBG("Parrot %s\n", enabled ? "ON" : "OFF");
     }
 
@@ -568,3 +567,71 @@ struct Parrot
         }
     }
 } parrot;
+
+struct Scanner
+{
+    bool enabled = false;
+    uint32_t t_last = 0;
+    uint8_t chIdx = 0;
+    uint8_t rateIdx = 0;
+    uint32_t dwell_ms = 500;
+    bool found = false;
+
+    void enter()
+    {
+        enabled = true;
+        chIdx = 0;
+        rateIdx = 0;
+        found = false;
+        applyChannel();
+        applyDataRate();
+        blinker.startEx(3, 50, 50, 0, 0, false);
+        DBG("Started scanning mode\n");
+    }
+
+    void exit()
+    {
+        enabled = false;
+        found = false;
+        blinker.stop();
+        DBG("Exited scanning mode\n");
+    }
+
+    void tick()
+    {
+        if (!enabled)
+            return;
+        uint32_t now = millis();
+
+        if (rfAudio.isStreaming())
+        {
+            if (millis() - t_last > 500)
+            {
+                found = true;
+                blinker.startEx(5, 100, 100, 0, 0, true);
+                DBG("Stable signal detected! Channel %u, RateIdx %u\n", channel, dataRateIdx);
+                exit();
+            }
+            return;
+        }
+
+        if (now - t_last >= dwell_ms && !found)
+        {
+            rateIdx++;
+            if (rateIdx >= 3)
+            {
+                rateIdx = 0;
+                chIdx++;
+                if (chIdx >= CHANNEL_COUNT)
+                    chIdx = 0;
+            }
+            channelIdx = chIdx;
+            dataRateIdx = rateIdx;
+            channel = channels[chIdx];
+            applyChannel();
+            applyDataRate();
+            t_last = now;
+            DBG("Scanning: channel=%u, rateIdx=%u\n", channel, dataRateIdx);
+        }
+    }
+} scanner;

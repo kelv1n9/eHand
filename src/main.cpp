@@ -50,11 +50,11 @@ void setup()
   DBG("Battery: %u mV\n", volts);
 
   if (volts > MID_BATT_VOLT)
-    blinker.startEx(1, 50, 50, 0, 2000, false);
+    blinker.startEx(1, 100, 100, 0, 2000, false);
   else if (volts > LOW_BATT_VOLT)
-    blinker.startEx(2, 50, 50, 0, 2000, false);
+    blinker.startEx(2, 100, 100, 0, 2000, false);
   else
-    blinker.startEx(3, 50, 50, 0, 2000, false);
+    blinker.startEx(3, 100, 100, 0, 2000, false);
 }
 
 void loop()
@@ -84,6 +84,17 @@ void loop()
       return;
     }
     parrot.tick();
+    blinker.tick();
+    return;
+  }
+  else if (scanner.enabled)
+  {
+    if (encoder.hold())
+    {
+      scanner.exit();
+      return;
+    }
+    scanner.tick();
     blinker.tick();
     return;
   }
@@ -180,6 +191,11 @@ void loop()
       parrot.toggle();
       return;
     }
+    else if (nClicks == 5 && !scanner.enabled)
+    {
+      scanner.enter();
+      return;
+    }
   }
 
   // Start Transmitting while PTT hold
@@ -219,7 +235,7 @@ void loop()
   if (now >= nextBlinkAt && !blinker.active() && !isTx && !rfAudio.isStreaming())
   {
     bool isLow = isLowBattery(now);
-    blinker.startEx(isLow ? 2 : 1, 50, 50, 200, 0, false);
+    blinker.startEx(isLow ? 2 : 1, 100, 100, 200, 0, false);
     nextBlinkAt = now + LED_BLINK_MS;
   }
 
