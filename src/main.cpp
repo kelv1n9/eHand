@@ -162,7 +162,7 @@ void loop()
   {
     uint8_t nClicks = encoder.getClicks();
 
-    // Rate toggle on encoder click
+    // Rate toggle
     if (nClicks == 1)
     {
       dataRateIdx = (dataRateIdx + 1) % 3;
@@ -171,8 +171,14 @@ void loop()
       markConfigEdited();
       blinker.startEx(dataRateIdx + 1, 200, 200, 200, 200, false);
     }
-    // Roger Beep toggle on encoder double click
-    else if (nClicks == 2)
+    // Scanner mode
+    else if (nClicks == 2 && !scanner.enabled)
+    {
+      scanner.enter();
+      return;
+    }
+    // Roger Beep 
+    else if (nClicks == 3)
     {
       rogerEnabled = !rogerEnabled;
       config.rogerEnabled = rogerEnabled ? 1 : 0;
@@ -181,21 +187,18 @@ void loop()
       DBG("Roger beep: %s\n", rogerEnabled ? "ON" : "OFF");
     }
     // Beacon mode
-    else if (nClicks == 3 && !beacon.enabled)
+    else if (nClicks == 4 && !beacon.enabled)
     {
       beacon.enter();
       return;
     }
-    else if (nClicks == 4 && !parrot.enabled)
+    // Parrot mode
+    else if (nClicks == 5 && !parrot.enabled)
     {
       parrot.toggle();
       return;
     }
-    else if (nClicks == 5 && !scanner.enabled)
-    {
-      scanner.enter();
-      return;
-    }
+    
   }
 
   // Start Transmitting while PTT hold
