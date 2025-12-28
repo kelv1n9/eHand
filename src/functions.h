@@ -61,9 +61,9 @@ D5 - Encoder switch
 #define SAVE_DELAY_MS 10000
 
 // Beacon
-#define BEACON_ON_MS 300
-#define BEACON_OFF_MS 1700
-#define BEACON_TONE 600
+#define BEACON_ON_MS 250
+#define BEACON_TONE 500
+uint16_t BEACON_PERIOD = 250;
 
 const uint8_t channels[] = {90, 100, 110};
 #define CHANNEL_COUNT (sizeof(channels) / sizeof(channels[0]))
@@ -431,7 +431,7 @@ struct Beacon
         isTx = true;
         phase = BURST;
         t0 = millis();
-        blinker.startEx(1, BEACON_ON_MS, BEACON_OFF_MS, 0, 0, false);
+        blinker.startEx(1, BEACON_ON_MS, BEACON_PERIOD, 0, 0, false);
         DBG("Sending beacon...\n");
     }
 
@@ -471,7 +471,7 @@ struct Beacon
         {
             stopBurst();
         }
-        else if (phase == GAP && dt >= BEACON_OFF_MS)
+        else if (phase == GAP && dt >= BEACON_PERIOD)
         {
             startBurst();
         }

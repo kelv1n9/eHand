@@ -72,6 +72,16 @@ void loop()
       beacon.exit();
       return;
     }
+
+    if (encoder.turn())
+    {
+      BEACON_PERIOD = BEACON_PERIOD + 250 * encoder.dir();
+      if (BEACON_PERIOD <= 250)
+        BEACON_PERIOD = 250;
+      if (BEACON_PERIOD >= 2000)
+        BEACON_PERIOD = 2000;
+    }
+
     beacon.tick();
     blinker.tick();
     return;
@@ -177,7 +187,7 @@ void loop()
       scanner.enter();
       return;
     }
-    // Roger Beep 
+    // Roger Beep
     else if (nClicks == 3)
     {
       rogerEnabled = !rogerEnabled;
@@ -198,7 +208,6 @@ void loop()
       parrot.toggle();
       return;
     }
-    
   }
 
   // Start Transmitting while PTT hold
