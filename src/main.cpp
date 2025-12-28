@@ -1,17 +1,3 @@
-/*
-Controls:
-
-- PTT hold ............ TX mode
-- PTT release ......... RX mode
-- PTT hold+Enc click .. Lock mode
-
-- Encoder turn ........ Volume
-- Encoder press+turn .. Channel
-- Encoder click ....... Data Rate
-- Enc turn+PTT hold.... TX Power
-
-*/
-
 #include "functions.h"
 
 void setup()
@@ -164,7 +150,6 @@ void loop()
   if (PTT.pressing() && encoder.hasClicks())
   {
     pttLocked = true;
-    blinker.startEx(rogerEnabled ? 1 : 2, 120, 120, 0, 0, true);
     DBG("PTT Locked\n");
   }
 

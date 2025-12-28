@@ -1,5 +1,3 @@
-#pragma once
-
 #include <RF24.h>
 #include <RF24Audio.h>
 #include "EncButton.h"
@@ -23,26 +21,8 @@
     } while (0)
 #endif
 
-/*
-
-Pin definitions
-A0 - Microphone input
-D9 - Speaker output
-D6 - LED output
-D12 - SPI MISO
-D11 - SPI MOSI
-D13 - SPI SCK
-D7 - RF24 CE
-D8 - RF24 CSN
-D2 - PTT button
-D3 - Encoder B
-D4 - Encoder A
-D5 - Encoder switch
-
-*/
-
 #define NAME "eHand"
-#define VERSION "2.1.0"
+#define VERSION "2.1.1"
 
 // PINS
 #define LED_PIN 6
@@ -448,7 +428,7 @@ struct Beacon
     {
         enabled = true;
         startBurst();
-        blinker.startEx(3, 100, 100, 0, 0, false);
+        blinker.startEx(4, 50, 50, 0, 0, false);
         DBG("Started beacon mode\n");
     }
 
@@ -502,7 +482,7 @@ struct Parrot
         enabled = !enabled;
         state = P_IDLE;
         rfAudio.receive();
-        blinker.startEx(4, 100, 100, 0, 0, false);
+        blinker.startEx(5, 50, 50, 0, 0, false);
         DBG("Parrot %s\n", enabled ? "ON" : "OFF");
     }
 
@@ -585,7 +565,7 @@ struct Scanner
         found = false;
         applyChannel();
         applyDataRate();
-        blinker.startEx(3, 50, 50, 0, 0, false);
+        blinker.startEx(2, 50, 50, 0, 0, false);
         DBG("Started scanning mode\n");
     }
 
@@ -608,7 +588,7 @@ struct Scanner
             if (millis() - t_last > 500)
             {
                 found = true;
-                blinker.startEx(5, 100, 100, 0, 0, true);
+                blinker.startEx(1, 50, 50, 0, 0, true);
                 DBG("Stable signal detected! Channel %u, RateIdx %u\n", channel, dataRateIdx);
                 exit();
             }
