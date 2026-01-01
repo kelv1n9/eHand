@@ -4,6 +4,7 @@
 #include <TimerFreeTone.h>
 #include <EEPROM.h>
 #include <Vcc.h>
+#include "userConfig.h"
 
 // #define DEBUG_eHand
 
@@ -22,7 +23,7 @@
 #endif
 
 #define NAME "eHand"
-#define VERSION "2.1.1"
+#define VERSION "2.2.0"
 
 // PINS
 #define LED_PIN 6
@@ -43,7 +44,12 @@
 // Beacon
 #define BEACON_ON_MS 250
 #define BEACON_TONE 500
+#define BEACON_PERIOD_MAX 5000
 uint16_t BEACON_PERIOD = 250;
+
+// SOS
+#define SOS_FREQ 800
+#define SOS_TIME_UNIT 100
 
 const uint8_t channels[] = {90, 100, 110};
 #define CHANNEL_COUNT (sizeof(channels) / sizeof(channels[0]))
@@ -82,6 +88,7 @@ uint8_t volume = 4;
 uint8_t maxVolume = 7;
 uint8_t dataRateIdx = 1;
 uint8_t txPowerIdx = 2;
+uint8_t receivedPacket[BUFFER_SIZE];
 
 enum BlinkState : uint8_t
 {
@@ -112,6 +119,9 @@ struct Blinker
 
     bool enabled = true;
 
+    uint8_t start_count = 0;
+    bool repeat = false;
+
     void begin()
     {
         pinMode(LED_PIN, OUTPUT);
@@ -120,6 +130,8 @@ struct Blinker
         remaining = 0;
         tmark = 0;
         use_pre = false;
+        start_count = 0;
+        repeat = false;
     }
 
     void setEnabled(bool en)
@@ -135,6 +147,8 @@ struct Blinker
             state = BL_IDLE;
             remaining = 0;
             use_pre = false;
+            repeat = false;
+            start_count = 0;
         }
     }
 
@@ -152,7 +166,7 @@ struct Blinker
         startEx(count, default_on_ms, default_off_ms, default_pre_ms, default_post_ms, default_resume_high);
     }
 
-    void startEx(uint8_t count, uint16_t on, uint16_t off, uint16_t pre, uint16_t post, bool resumeHigh)
+    void startEx(uint8_t count, uint16_t on, uint16_t off, uint16_t pre, uint16_t post, bool resumeHigh, bool rep = false)
     {
         if (!enabled)
         {
@@ -165,6 +179,8 @@ struct Blinker
         post_ms = post;
         resume_high = resumeHigh;
 
+        repeat = rep;
+        start_count = count;
         remaining = count;
         state = BL_OFF;
         use_pre = (pre_ms > 0);
@@ -178,6 +194,8 @@ struct Blinker
         state = BL_IDLE;
         remaining = 0;
         use_pre = false;
+        repeat = false;
+        start_count = 0;
     }
 
     bool active() { return state != BL_IDLE; }
@@ -227,10 +245,18 @@ struct Blinker
 
                 if (remaining == 0)
                 {
-                    state = (post_ms > 0) ? BL_POST : BL_IDLE;
-                    if (state == BL_IDLE && resume_high)
+                    if (repeat)
                     {
-                        digitalWrite(LED_PIN, HIGH);
+                        remaining = start_count; 
+                        state = BL_OFF;
+                        use_pre = (pre_ms > 0);
+                        tmark = now;
+                    }
+                    else
+                    {
+                        state = (post_ms > 0) ? BL_POST : BL_IDLE;
+                        if (state == BL_IDLE && resume_high)
+                            digitalWrite(LED_PIN, HIGH);
                     }
                 }
                 else
@@ -565,7 +591,7 @@ struct Scanner
         found = false;
         applyChannel();
         applyDataRate();
-        blinker.startEx(2, 50, 50, 0, 0, false);
+        blinker.startEx(1, 60, 60, 0, 0, false, true);
         DBG("Started scanning mode\n");
     }
 
@@ -588,9 +614,10 @@ struct Scanner
             if (millis() - t_last > 500)
             {
                 found = true;
-                blinker.startEx(1, 50, 50, 0, 0, true);
+                blinker.stop();
                 DBG("Stable signal detected! Channel %u, RateIdx %u\n", channel, dataRateIdx);
                 exit();
+                blinker.startEx(2, 100, 100, 500, 0, true);
             }
             return;
         }
@@ -615,3 +642,50 @@ struct Scanner
         }
     }
 } scanner;
+
+struct SOSPlayer
+{
+    bool active;
+    uint8_t step = 0;
+    uint32_t tNext = 0;
+
+    void start()
+    {
+        active = true;
+        step = 0;
+        tNext = 0;
+    }
+
+    void tick(uint32_t now)
+    {
+        if (!active)
+            return;
+        if (tNext != 0 && now < tNext)
+            return;
+
+        switch (step)
+        {
+        case 0:
+            TimerFreeTone(9, SOS_FREQ, SOS_TIME_UNIT, 1);
+            tNext = now + SOS_TIME_UNIT + 3 * SOS_TIME_UNIT;
+            step = 1;
+            break;
+
+        case 1:
+            TimerFreeTone(9, SOS_FREQ, 3 * SOS_TIME_UNIT, 1);
+            tNext = now + SOS_TIME_UNIT + 3 * SOS_TIME_UNIT;
+            step = 2;
+            break;
+
+        case 2:
+            TimerFreeTone(9, SOS_FREQ, SOS_TIME_UNIT, 1);
+            tNext = now + SOS_TIME_UNIT;
+            step = 3;
+            break;
+
+        default:
+            active = false;
+            break;
+        }
+    }
+} SOS;

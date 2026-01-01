@@ -61,11 +61,11 @@ void loop()
 
     if (encoder.turn())
     {
-      BEACON_PERIOD = BEACON_PERIOD + 250 * encoder.dir();
-      if (BEACON_PERIOD <= 250)
-        BEACON_PERIOD = 250;
-      if (BEACON_PERIOD >= 2000)
-        BEACON_PERIOD = 2000;
+      BEACON_PERIOD = BEACON_PERIOD + BEACON_ON_MS * encoder.dir();
+      if (BEACON_PERIOD <= BEACON_ON_MS)
+        BEACON_PERIOD = BEACON_ON_MS;
+      if (BEACON_PERIOD >= BEACON_PERIOD_MAX)
+        BEACON_PERIOD = BEACON_PERIOD_MAX;
     }
 
     beacon.tick();
@@ -153,6 +153,34 @@ void loop()
     DBG("PTT Locked\n");
   }
 
+  if (PTT.hasClicks() && encoder.pressing())
+  {
+    uint8_t nClicks = PTT.getClicks();
+
+    if (nClicks == 3)
+    {
+      DBG("Sending SOS...\n");
+      uint8_t packet[BUFFER_SIZE] = {0};
+      packet[0] = PROTOCOL_HEADER;
+      packet[1] = 'S';
+      packet[2] = 'O';
+      packet[3] = 'S';
+      rfAudio.sendMessage(packet);
+    }
+  }
+
+  if (rfAudio.readMessage(receivedPacket))
+  {
+    if (receivedPacket[0] == PROTOCOL_HEADER)
+    {
+      if (receivedPacket[1] == 'S' && receivedPacket[2] == 'O' && receivedPacket[3] == 'S')
+      {
+        DBG("SOS Received\n");
+        SOS.start();
+      }
+    }
+  }
+
   if (!PTT.pressing() && !isTx && encoder.hasClicks())
   {
     uint8_t nClicks = encoder.getClicks();
@@ -196,7 +224,7 @@ void loop()
   }
 
   // Start Transmitting while PTT hold
-  if (PTT.press())
+  if (PTT.press() && !encoder.pressing())
   {
     // Transmit if not receiving
     if (!rfAudio.isStreaming() && !isTx && !pttLocked)
@@ -249,5 +277,6 @@ void loop()
   prevStreaming = rfAudio.isStreaming();
 
   blinker.tick();
+  SOS.tick(now);
   saveSettings();
 }

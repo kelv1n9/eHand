@@ -18,35 +18,19 @@
  */
 #define SAMPLE_RATE 10000
 
-/** @brief The pin that analog readings will be taken from (microphone pin) */
-#define ANALOG_PIN A0
-
-/************  OverRides  ************/
-
-/**
- * @brief Indicator pin
- *
- * Using pin 6 on Uno enables audio visualization. Pin 13 on Mega 2560 (TIMER0 COMPA)
- * @note The pin number cannot be changed.
- */
-#define ENABLE_LED
-
 /************  Optional/Advanced User Variables  ************/
 
 /** The size of the memory buffer to use. Not really configurable (set to maximum by default). */
-#define buffSize 32
+#define BUFFER_SIZE 32
+
+/** The message protocol header **/
+#define PROTOCOL_HEADER 0xA5
 
 /************  Automated pin selections, override by defining above  ************/
 
-// Speaker selection for Uno,Nano, etc
-#if !defined(speakerPin)
-/** The pin used to output audio on UNO */
-#define speakerPin 9
-#endif
-
-#if defined(ENABLE_LED)
-#define ledPin 6
-#endif
+#define ANALOG_PIN A0
+#define SPEAKER_PIN 9
+#define LED_PIN 6
 
 //********Radio Defines ****************************
 /** Radio pipe addresses for the 2 nodes to communicate. */

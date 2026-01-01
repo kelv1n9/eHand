@@ -77,6 +77,8 @@ public:
     void receive();
 
     bool isStreaming();
+    void sendMessage(const void *packet);
+    bool readMessage(uint8_t *out);
 
 private:
     RF24 &radio;

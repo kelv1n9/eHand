@@ -12,9 +12,9 @@
 
 //******* General Variables ************************
 #define RESOLUTION_BASE ((F_CPU) / 10)
-volatile uint16_t g_phase = 0;
-volatile uint16_t g_phaseStep = 1;
-volatile bool g_beaconMode = false;
+volatile uint16_t phase = 0;
+volatile uint16_t phaseStep = 1;
+volatile boolean beaconMode = false;
 volatile boolean buffEmpty[2] = {true, true};
 volatile boolean whichBuff = false;
 volatile boolean streaming = false;
@@ -23,8 +23,12 @@ volatile byte buffCount = 0;
 volatile byte pauseCntr = 0;
 volatile byte bufCtr = 0;
 byte pin = ANALOG_PIN;
-unsigned int intCount = 0;
-byte buffer[2][buffSize + 1];
+
+volatile bool msgReady = false;
+uint8_t msgBuf[BUFFER_SIZE];
+
+uint8_t intCount = 0;
+byte buffer[2][BUFFER_SIZE + 1];
 char volMod = -1;
 
 RF24 radi(0, 0);
@@ -35,87 +39,6 @@ RF24 radi(0, 0);
 
 /*****************************************************************************************************************************/
 /************************************************* General Section ***********************************************************/
-
-void RF24Audio_setBeaconMode(bool enabled)
-{
-    noInterrupts();
-    g_beaconMode = enabled;
-    g_phase = 0;
-    interrupts();
-}
-
-void RF24Audio_setBeaconTone(uint16_t hz)
-{
-    uint32_t step = (((uint32_t)hz << 16) + (SAMPLE_RATE / 2)) / (uint32_t)SAMPLE_RATE;
-    if (step == 0)
-        step = 1;
-    noInterrupts();
-    g_phaseStep = (uint16_t)step;
-    interrupts();
-}
-
-bool RF24Audio::isStreaming()
-{
-    return streaming;
-}
-
-RF24Audio::RF24Audio(RF24 &_radio) : radio(_radio)
-{
-    radi = radio;
-}
-
-void RF24Audio::begin()
-{
-    pinMode(speakerPin, OUTPUT);
-
-    // 32 MHz / 128 / 13 = 19.5kHz
-    if (SAMPLE_RATE < 17800)
-    {
-        prescaleByte = B00000110; // 64
-    }
-    else if (SAMPLE_RATE < 36000)
-    {
-        prescaleByte = B00000101; // 32
-    }
-    else if (SAMPLE_RATE < 54000)
-    {
-        prescaleByte = B00000100; // 16
-    }
-    else if (SAMPLE_RATE < 130000)
-    {
-        prescaleByte = B00000011; // 8
-    }
-    else
-    {
-        prescaleByte = B00000010; // 4
-    }
-
-    if (pin >= 14)
-        pin -= 14; // allow for channel or pin numbers
-
-    radio.setAutoAck(0);                // Disable ACKnowledgement packets
-    radio.setCRCLength(RF24_CRC_8);     // Set CRC to 1 byte for speed
-    radio.openWritingPipe(pipes[0]);    // Set up reading and writing pipes. All of the radios write via multicast on the same pipe
-    radio.openReadingPipe(1, pipes[1]); // All of the radios listen by default to the same multicast pipe
-    radio.setRetries(0, 0);
-
-    radio.startListening(); // NEED to start listening after opening a reading pipe
-    timerStart();           // Get the timer running
-    RX();                   // Start listening for transmissions
-}
-
-void RF24Audio::setVolume(char vol)
-{
-    volMod = vol - 4;
-}
-
-void RF24Audio::timerStart()
-{
-    ICR1 = 10 * (RESOLUTION_BASE / SAMPLE_RATE);  // Timer will count up to this value from 0;
-    TCCR1A = _BV(COM1A1);                         // Enable the timer port/pin as output
-    TCCR1A |= _BV(WGM11);                         // WGM11,12,13 all set to 1 = fast PWM/w ICR TOP
-    TCCR1B = _BV(WGM13) | _BV(WGM12) | _BV(CS10); // CS10 = no prescaling
-}
 
 void rampDown()
 {
@@ -149,12 +72,12 @@ void rampUp(byte nextVal)
     }
     if (nextVal > mod)
     {
-        for (unsigned int i = 0; i < buffSize; i++)
+        for (unsigned int i = 0; i < BUFFER_SIZE; i++)
         {
             mod = constrain(mod + 1, mod, nextVal);
             buffer[0][i] = mod;
         }
-        for (unsigned int i = 0; i < buffSize; i++)
+        for (unsigned int i = 0; i < BUFFER_SIZE; i++)
         {
             mod = constrain(mod + 1, mod, nextVal);
             buffer[1][i] = mod;
@@ -162,12 +85,12 @@ void rampUp(byte nextVal)
     }
     else
     {
-        for (unsigned int i = 0; i < buffSize; i++)
+        for (unsigned int i = 0; i < BUFFER_SIZE; i++)
         {
             mod = constrain(mod - 1, nextVal, mod);
             buffer[0][i] = mod;
         }
-        for (unsigned int i = 0; i < buffSize; i++)
+        for (unsigned int i = 0; i < BUFFER_SIZE; i++)
         {
             mod = constrain(mod - 1, nextVal, mod);
             buffer[1][i] = mod;
@@ -177,6 +100,115 @@ void rampUp(byte nextVal)
     buffEmpty[0] = 0;
     buffEmpty[1] = 0;
     buffCount = 0;
+}
+
+RF24Audio::RF24Audio(RF24 &_radio) : radio(_radio)
+{
+    radi = radio;
+}
+
+void RF24Audio_setBeaconMode(bool enabled)
+{
+    noInterrupts();
+    beaconMode = enabled;
+    phase = 0;
+    interrupts();
+}
+
+void RF24Audio_setBeaconTone(uint16_t hz)
+{
+    uint32_t step = (((uint32_t)hz << 16) + (SAMPLE_RATE / 2)) / (uint32_t)SAMPLE_RATE;
+    if (step == 0)
+        step = 1;
+    noInterrupts();
+    phaseStep = (uint16_t)step;
+    interrupts();
+}
+
+void RF24Audio::sendMessage(const void *packet)
+{
+    cli();
+    radio.stopListening();
+    radio.openWritingPipe(pipes[1]);
+    radio.flush_tx();
+    radio.write(packet, BUFFER_SIZE);
+    sei();
+
+    RX();
+}
+
+bool RF24Audio::readMessage(uint8_t *out)
+{
+    bool ready = false;
+
+    noInterrupts();
+    if (msgReady)
+    {
+        for (uint8_t i = 0; i < BUFFER_SIZE; i++)
+            out[i] = msgBuf[i];
+        msgReady = false;
+        ready = true;
+    }
+    interrupts();
+
+    return ready;
+}
+
+bool RF24Audio::isStreaming()
+{
+    return streaming;
+}
+
+void RF24Audio::begin()
+{
+    pinMode(SPEAKER_PIN, OUTPUT);
+
+    // 32 MHz / 128 / 13 = 19.5kHz
+    if (SAMPLE_RATE < 17800)
+    {
+        prescaleByte = B00000110; // 64
+    }
+    else if (SAMPLE_RATE < 36000)
+    {
+        prescaleByte = B00000101; // 32
+    }
+    else if (SAMPLE_RATE < 54000)
+    {
+        prescaleByte = B00000100; // 16
+    }
+    else if (SAMPLE_RATE < 130000)
+    {
+        prescaleByte = B00000011; // 8
+    }
+    else
+    {
+        prescaleByte = B00000010; // 4
+    }
+
+    pin = (ANALOG_PIN >= 14) ? (ANALOG_PIN - 14) : ANALOG_PIN;
+
+    radio.setAutoAck(0);                // Disable ACKnowledgement packets
+    radio.setCRCLength(RF24_CRC_8);     // Set CRC to 1 byte for speed
+    radio.openWritingPipe(pipes[0]);    // Set up reading and writing pipes. All of the radios write via multicast on the same pipe
+    radio.openReadingPipe(1, pipes[1]); // All of the radios listen by default to the same multicast pipe
+    radio.setRetries(0, 0);             // Set the number of retry attempts and delay between retry attempts
+    radio.startListening();             // NEED to start listening after opening a reading pipe
+    pinMode(SPEAKER_PIN, INPUT);        // Disable the speaker pin
+    timerStart();                       // Get the timer running
+    RX();                               // Start listening for transmissions
+}
+
+void RF24Audio::setVolume(char vol)
+{
+    volMod = vol - 4;
+}
+
+void RF24Audio::timerStart()
+{
+    ICR1 = 10 * (RESOLUTION_BASE / SAMPLE_RATE);  // Timer will count up to this value from 0;
+    TCCR1A = _BV(COM1A1);                         // Enable the timer port/pin as output
+    TCCR1A |= _BV(WGM11);                         // WGM11,12,13 all set to 1 = fast PWM/w ICR TOP
+    TCCR1B = _BV(WGM13) | _BV(WGM12) | _BV(CS10); // CS10 = no prescaling
 }
 
 void RF24Audio::transmit()
@@ -218,9 +250,7 @@ void handleRadio()
             rampDown();              // Ramp down the speaker (prevention of popping sounds)
             streaming = 0;           // Indicate that streaming is stopped
             TIMSK1 &= ~(_BV(TOIE1)); // Disable the TIMER1 overflow vector (playback)
-#if defined(ENABLE_LED)
-            digitalWrite(ledPin, LOW);
-#endif
+            digitalWrite(LED_PIN, LOW);
             TCCR1A &= ~_BV(COM1A1); // Disable speaker output
         }
     }
@@ -231,24 +261,29 @@ void handleRadio()
             TIMSK1 &= ~_BV(ICIE1);     // Since this is called from an interrupt, disable it
             sei();                     // Enable global interrupts (nested interrupts) Other interrupts can interrupt this one
             radi.read(&buffer[0], 32); // Read the payload into the buffer
+
+            // Additional commands can be added here for controlling other things via radio command
             switch (buffer[0][0])
-            { // Additional commands can be added here for controlling other things via radio command
-              //             case 'r':
-              //                 if (buffer[0][1] == 'R' && radioIdentifier < 2)
-              //                 { // Switch to TX mode if we received the remote tx command and this is radio 0 or 1
-              //                     TX();
-              //                 }
-              //                 break;
-            default:
-                streaming = 1;               // If not a command, treat as audio data, enable streaming
-                pinMode(speakerPin, OUTPUT); // Enable the speaker pin
-                TCCR1A |= _BV(COM1A1);       // Enable output to speaker pin
-                rampUp(buffer[0][31]);       // Ramp up the speakers to prevent popping
-                TIMSK1 |= _BV(TOIE1);        // Enable the overflow vector
-#if defined(ENABLE_LED)
-                digitalWrite(ledPin, HIGH);
-#endif
+            {
+            case PROTOCOL_HEADER:
+            {
+                cli();
+                for (uint8_t i = 0; i < BUFFER_SIZE; i++)
+                    msgBuf[i] = buffer[0][i];
+                msgReady = true;
+                sei();
                 break;
+            }
+            default:
+            {
+                streaming = 1;                // If not a command, treat as audio data, enable streaming
+                pinMode(SPEAKER_PIN, OUTPUT); // Enable the speaker pin
+                TCCR1A |= _BV(COM1A1);        // Enable output to speaker pin
+                rampUp(buffer[0][31]);        // Ramp up the speakers to prevent popping
+                TIMSK1 |= _BV(TOIE1);         // Enable the overflow vector
+                digitalWrite(LED_PIN, HIGH);
+                break;
+            }
             }
             TIMSK1 |= _BV(ICIE1); // Finished: Re-enable the interrupt that runs this function.
         }
@@ -305,7 +340,7 @@ ISR(TIMER1_OVF_vect)
 
         intCount++; // Keep track of how many samples have been loaded
 
-        if (intCount >= buffSize)
+        if (intCount >= BUFFER_SIZE)
         {                                // If the buffer is empty, do the following
             intCount = 0;                // Reset the sample count
             buffEmpty[whichBuff] = true; // Indicate which buffer is empty
@@ -316,8 +351,6 @@ ISR(TIMER1_OVF_vect)
 
 /*****************************************************************************************************************************/
 /*************************************** Transmission (TX) Section ***********************************************************/
-
-#if !defined(RX_ONLY) // If TX is enabled:
 
 // Transmission sending interrupt
 ISR(TIMER1_COMPA_vect)
@@ -335,13 +368,14 @@ ISR(TIMER1_COMPA_vect)
 }
 
 // Transmission buffering interrupt
-ISR(TIMER1_COMPB_vect) // This interrupt vector captures the ADC values and stores them in a buffer
+// This interrupt vector captures the ADC values and stores them in a buffer
+ISR(TIMER1_COMPB_vect)
 {
     // 8-bit samples
-    if (g_beaconMode)
+    if (beaconMode)
     {
-        g_phase += g_phaseStep;
-        buffer[whichBuff][buffCount] = (g_phase & 0x8000) ? 255 : 0;
+        phase += phaseStep;
+        buffer[whichBuff][buffCount] = (phase & 0x8000) ? 255 : 0;
     }
     else
     {
@@ -349,7 +383,8 @@ ISR(TIMER1_COMPB_vect) // This interrupt vector captures the ADC values and stor
     }
     buffCount++;
 
-    if (buffCount >= 32) // In 8-bit mode, do this every 32 samples
+    // In 8-bit mode, do this every 32 samples
+    if (buffCount >= 32)
     {
         // Both modes
         buffCount = 0;             // Reset the sample counter
@@ -361,11 +396,8 @@ ISR(TIMER1_COMPB_vect) // This interrupt vector captures the ADC values and stor
 void TX()
 {
     TIMSK1 &= ~(_BV(ICIE1) | _BV(TOIE1)); // Disable the receive interrupts
-#if defined(ENABLE_LED)
-    digitalWrite(ledPin, LOW);
-#endif
-    radi.stopListening();           // Enter transmit mode on the radio
-    radi.openWritingPipe(pipes[1]); // Set up reading and writing pipes
+    radi.stopListening();                 // Enter transmit mode on the radio
+    radi.openWritingPipe(pipes[1]);       // Set up reading and writing pipes
     radi.openReadingPipe(1, pipes[0]);
 
     streaming = 0;
@@ -373,22 +405,15 @@ void TX()
     buffEmpty[0] = 1;
     buffEmpty[1] = 1; // Set some variables
 
-#if defined(ADCSRB) && defined(MUX5)
-    ADCSRB = (ADCSRB & ~(1 << MUX5)) | (((pin >> 3) & 0x01) << MUX5);
-#endif
-#if defined(ADMUX)
     ADMUX = (pin & 0x07) | _BV(REFS0); // Enable the ADC PIN and set 5v Analog Reference
-#endif
 
     ICR1 = 10 * (RESOLUTION_BASE / SAMPLE_RATE);    // Timer counts from 0 to this value
     rampDown();                                     // If disabling/enabling the speaker, ramp it down
     TCCR1A &= ~(_BV(COM1A1));                       // Disable output to speaker
-    pinMode(speakerPin, INPUT);                     // Disable the speaker pin
+    pinMode(SPEAKER_PIN, INPUT);                    // Disable the speaker pin
     ADMUX |= _BV(ADLAR);                            // Left-shift result so only high byte needs to be read
     ADCSRB |= _BV(ADTS0) | _BV(ADTS0) | _BV(ADTS2); // Attach ADC start to TIMER1 Capture interrupt flag
     ADCSRA = prescaleByte;                          // Adjust sampling rate of ADC depending on sample rate
     ADCSRA |= _BV(ADEN) | _BV(ADATE);               // ADC Enable, Auto-trigger enable
     TIMSK1 = _BV(OCIE1B) | _BV(OCIE1A);             // Enable the TIMER1 COMPA and COMPB interrupts
 }
-
-#endif
