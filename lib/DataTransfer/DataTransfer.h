@@ -4,6 +4,8 @@
 #define CSN_PIN 8
 #define CE_PIN 7
 
+#define PIN (ANALOG_PIN >= 14) ? (ANALOG_PIN - 14) : ANALOG_PIN
+
 RF24 radio(CE_PIN, CSN_PIN);
 
 //******* General Variables ************************
@@ -16,17 +18,15 @@ volatile boolean beaconMode = false; // If true, TX sends generated beacon tone 
 volatile boolean isStreaming = false; // True when audio stream is active (RX playback running); false when idle/command mode
 
 // ADC configuration for TX sampling
-byte pin = ANALOG_PIN; // Selected ADC channel index (mapped from Arduino analog pin number)
+// byte pin = ANALOG_PIN; // Selected ADC channel index (mapped from Arduino analog pin number)
 
 // RX stream watchdog + scheduling
 volatile byte pauseCntr = 0; // Counts consecutive "no payload" checks; if too high, stop isStreaming and mute output
 volatile byte bufCtr = 0;    // Divider counter for TIMER1_CAPT ISR; calls handleRadio() every N ticks
 
 // Message/command passing
-volatile bool msgReady = false; // Set true when a PROTOCOL_HEADER packet was received and copied into msgRxBuf
-volatile bool msgPending = false;
+volatile bool msgReady = false;         // Set true when a PROTOCOL_HEADER packet was received and copied into msgRxBuf
 volatile uint8_t msgRxBuf[BUFFER_SIZE]; // Last received command/message payload
-uint8_t msgTxBuf[BUFFER_SIZE];
 
 // Double buffer for audio samples (32 bytes per payload)
 // intCount/buffCount are indices inside the current buffer, whichBuff selects which of the two buffers is active.
@@ -36,33 +36,14 @@ volatile boolean buffEmpty[2] = {true, true}; // Per-buffer state: true = empty/
 volatile boolean whichBuff = false;           // Active buffer selector: 0 or 1 (toggles to implement double buffering)
 byte buffer[2][BUFFER_SIZE + 1];              // Two audio payload buffers; each holds one RF payload of audio samples
 
-// Volume control (applied during RX playback when writing to OCR1A)
+// Volume control
 volatile char volMod = -1; // Volume shift: negative = right shift (quieter), positive = left shift (louder)
 
 /*****************************************************************************************************************************/
 /************************************************* General Section ***********************************************************/
-void rampDown()
-{
-    uint16_t step = 400;
-    uint16_t target = 0;
-    uint16_t cur = OCR1A;
-
-    if (cur > target)
-    {
-        while (cur > target + step)
-        {
-            cur -= step;
-            OCR1A = cur;
-            delayMicroseconds(100);
-        }
-    }
-
-    OCR1A = target;
-}
 
 void receive()
 {
-    // Start Receiving
     TIMSK1 &= ~(_BV(OCIE1B) | _BV(OCIE1A)); // Disable the transmit interrupts
     ADCSRA = 0;                             // Disable Analog to Digital Converter (ADC)
     ADCSRB = 0;                             // Disable Analog to Digital Converter (ADC)
@@ -76,8 +57,7 @@ void receive()
 }
 
 void transmit()
-{
-    cli();
+{   
     TIMSK1 &= ~((1 << ICIE1) | (1 << TOIE1)); // Disable the receive interrupts
     radio.stopListening();                    // Enter transmit mode on the radio
     radio.openWritingPipe(pipes[1]);          // Set up reading and writing pipes
@@ -89,7 +69,7 @@ void transmit()
     buffEmpty[1] = true; // Set some variables
 
     pinMode(SPEAKER_PIN, INPUT);            // Disable the speaker pin
-    ADMUX = (pin & 0x07) | (1 << REFS0);    // Enable the ADC PIN and set 5v Analog Reference
+    ADMUX = (PIN & 0x07) | (1 << REFS0);    // Enable the ADC PIN and set 5v Analog Reference
     ICR1 = F_CPU / SAMPLE_RATE - 1;         // Timer counts from 0 to this value
     TCCR1A &= ~((1 << COM1A1));             // Disable output to speaker
     ADMUX |= (1 << ADLAR);                  // Left-shift result so only high byte needs to be read
@@ -99,22 +79,18 @@ void transmit()
     TIMSK1 = (1 << OCIE1B) | (1 << OCIE1A); // Enable the TIMER1 COMPA and COMPB interrupts
 }
 
-void setBeaconMode(bool enabled)
+void RadioBegin()
 {
-    cli();
-    beaconMode = enabled;
-    phase = 0;
-    sei();
-}
+    radio.begin();
+    radio.setAutoAck(0);                   // Disable ACKnowledgement packets
+    radio.setRetries(0, 0);                // Set the number of retry attempts and delay between retry attempts
+    radio.setCRCLength(RF24_CRC_DISABLED); // Set CRC to 1 byte for speed
 
-void setBeaconTone(uint16_t hz)
-{
-    uint32_t step = (((uint32_t)hz << 16) + (SAMPLE_RATE / 2)) / (uint32_t)SAMPLE_RATE;
-    if (step == 0)
-        step = 1;
-    cli();
-    phaseStep = step;
-    sei();
+    TCCR1A = (1 << COM1A1) | (1 << WGM11);              // Enable the timer port/pin as output
+    TCCR1B = (1 << WGM13) | (1 << WGM12) | (1 << CS10); // FPWM, 585.93035 Hz
+    ICR1 = F_CPU / SAMPLE_RATE - 1;                     // Timer will count up to this value from 0;
+
+    receive(); // Start listening for transmissions
 }
 
 void sendMessage(const uint8_t *packet)
@@ -147,25 +123,41 @@ bool readMessage(uint8_t *out)
     return ready;
 }
 
-void audioBegin()
+void rampDown()
 {
-    pin = (ANALOG_PIN >= 14) ? (ANALOG_PIN - 14) : ANALOG_PIN;
+    uint16_t step = 400;
+    uint16_t target = 0;
+    uint16_t cur = OCR1A;
 
-    radio.begin();
-    radio.setAutoAck(0);                   // Disable ACKnowledgement packets
-    radio.setCRCLength(RF24_CRC_DISABLED); // Set CRC to 1 byte for speed
-    // radio.openWritingPipe(pipes[0]);       // Set up reading and writing pipes. All of the radios write via multicast on the same pipe
-    // radio.openReadingPipe(1, pipes[1]);    // All of the radios listen by default to the same multicast pipe
-    radio.openWritingPipe(pipes[1]); // Set up reading and writing pipes
-    radio.openReadingPipe(1, pipes[0]);
-    radio.setRetries(0, 0); // Set the number of retry attempts and delay between retry attempts
-    radio.startListening(); // NEED to start listening after opening a reading pipe
+    if (cur > target)
+    {
+        while (cur > target + step)
+        {
+            cur -= step;
+            OCR1A = cur;
+            delayMicroseconds(100);
+        }
+    }
 
-    TCCR1A = (1 << COM1A1) | (1 << WGM11);              // Enable the timer port/pin as output
-    TCCR1B = (1 << WGM13) | (1 << WGM12) | (1 << CS10); // FPWM, 585.93035 Hz
-    ICR1 = F_CPU / SAMPLE_RATE - 1;                     // Timer will count up to this value from 0;
+    OCR1A = target;
+}
 
-    receive(); // Start listening for transmissions
+void setBeaconMode(bool enabled)
+{
+    cli();
+    beaconMode = enabled;
+    phase = 0;
+    sei();
+}
+
+void setBeaconTone(uint16_t hz)
+{
+    uint32_t step = (((uint32_t)hz << 16) + (SAMPLE_RATE / 2)) / (uint32_t)SAMPLE_RATE;
+    if (step == 0)
+        step = 1;
+    cli();
+    phaseStep = step;
+    sei();
 }
 
 void setVolume(char vol)

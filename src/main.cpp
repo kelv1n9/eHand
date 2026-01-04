@@ -9,28 +9,11 @@ void setup()
   DBG("Name: %s\n", NAME);
   DBG("Version: %s\n\n", VERSION);
 #endif
-  audioBegin();
+  RadioBegin();
   loadSettings();
   blinker.begin();
 
-  // Invisible mode
-  if (encoder.readBtn())
-  {
-    encoder.reset();
-    isInvisibleMode = true;
-    maxVolume = 3;
-    volume = 1;
-    dataRateIdx = 0; // MIN
-    txPowerIdx = 3;  // MAX
-
-    applyDataRate();
-    applyTxPower();
-    applyVolume();
-    blinker.setEnabled(!isInvisibleMode);
-    DBG("Invisible mode is enabled\n");
-  }
-
-  delay(300);
+  // delay(300);
   uint16_t volts = vcc.Read_Volts() * 1000;
   DBG("Battery: %u mV\n", volts);
 
@@ -47,9 +30,6 @@ void loop()
   encoder.tick();
   PTT.tick();
 
-  uint32_t now = millis();
-  static uint32_t nextBlinkAt;
-
   if (beacon.enabled)
   {
     if (encoder.hold())
@@ -60,13 +40,13 @@ void loop()
 
     if (encoder.turn())
     {
-      int period = BEACON_PERIOD + BEACON_ON_MS * encoder.dir();
+      int period = beaconPeriod + BEACON_ON_MS * encoder.dir();
       if (period <= BEACON_ON_MS)
         period = BEACON_ON_MS;
-      if (period >= BEACON_PERIOD_MAX)
-        period = BEACON_PERIOD_MAX;
+      if (period >= BEACON_PERIOD_MAX_MS)
+        period = BEACON_PERIOD_MAX_MS;
 
-      BEACON_PERIOD = period;
+      beaconPeriod = period;
     }
 
     beacon.tick();
@@ -253,12 +233,12 @@ void loop()
   if (PTT.release() && isTx && !pttLocked)
   {
     releasePending = true;
-    releaseAt = now;
+    releaseAt = millis();
   }
 
   if (releasePending && isTx && !pttLocked)
   {
-    if (now - releaseAt >= PTT_RELEASE_MS && !PTT.pressing())
+    if (millis() - releaseAt >= PTT_RELEASE_MS && !PTT.pressing())
     {
       releasePending = false;
       blinker.stop();
@@ -273,11 +253,11 @@ void loop()
   }
 
   // Blink LED when radio is waiting
-  if (now >= nextBlinkAt && !blinker.active() && !isTx && !isStreaming)
+  if (millis() >= nextBlinkAt && !blinker.active() && !isTx && !isStreaming)
   {
-    bool isLow = isLowBattery(now);
+    bool isLow = isLowBattery();
     blinker.startEx(isLow ? 2 : 1, 100, 100, 200, 0, false);
-    nextBlinkAt = now + LED_BLINK_MS;
+    nextBlinkAt = millis() + LED_BLINK_MS;
   }
 
   // Roger beep
@@ -292,7 +272,7 @@ void loop()
   }
   prevStreaming = isStreaming;
 
+  SOS.tick();
   blinker.tick();
-  SOS.tick(now);
   saveSettings();
 }
