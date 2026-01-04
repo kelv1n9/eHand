@@ -25,8 +25,8 @@ volatile byte pauseCntr = 0; // Counts consecutive "no payload" checks; if too h
 volatile byte bufCtr = 0;    // Divider counter for TIMER1_CAPT ISR; calls handleRadio() every N ticks
 
 // Message/command passing
-volatile bool msgReady = false;         // Set true when a PROTOCOL_HEADER packet was received and copied into msgRxBuf
-volatile uint8_t msgRxBuf[BUFFER_SIZE]; // Last received command/message payload
+volatile bool msgReady = false;         // Set true when a PROTOCOL_HEADER packet was received and copied into messageBuffer
+volatile uint8_t messageBuffer[BUFFER_SIZE]; // Last received command/message payload
 
 // Double buffer for audio samples (32 bytes per payload)
 // intCount/buffCount are indices inside the current buffer, whichBuff selects which of the two buffers is active.
@@ -34,7 +34,7 @@ volatile byte intCount = 0;                   // RX playback sample index within
 volatile byte buffCount = 0;                  // TX capture sample index within buffer[whichBuff] (0..BUFFER_SIZE-1)
 volatile boolean buffEmpty[2] = {true, true}; // Per-buffer state: true = empty/free, false = full/ready
 volatile boolean whichBuff = false;           // Active buffer selector: 0 or 1 (toggles to implement double buffering)
-byte buffer[2][BUFFER_SIZE + 1];              // Two audio payload buffers; each holds one RF payload of audio samples
+byte buffer[2][BUFFER_SIZE];              // Two audio payload buffers; each holds one RF payload of audio samples
 
 // Volume control
 volatile char volMod = -1; // Volume shift: negative = right shift (quieter), positive = left shift (louder)
@@ -114,7 +114,7 @@ bool readMessage(uint8_t *out)
     if (msgReady)
     {
         for (uint8_t i = 0; i < BUFFER_SIZE; i++)
-            out[i] = msgRxBuf[i];
+            out[i] = messageBuffer[i];
         msgReady = false;
         ready = true;
     }
@@ -210,7 +210,7 @@ void handleRadio()
             if (buffer[0][0] == PROTOCOL_HEADER)
             {
                 for (uint8_t i = 0; i < BUFFER_SIZE; i++)
-                    msgRxBuf[i] = buffer[0][i];
+                    messageBuffer[i] = buffer[0][i];
                 msgReady = true;
             }
             else

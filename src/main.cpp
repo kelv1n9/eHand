@@ -13,7 +13,6 @@ void setup()
   loadSettings();
   blinker.begin();
 
-  // delay(300);
   uint16_t volts = vcc.Read_Volts() * 1000;
   DBG("Battery: %u mV\n", volts);
 
