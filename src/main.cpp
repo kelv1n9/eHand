@@ -9,9 +9,8 @@ void setup()
   DBG("Name: %s\n", NAME);
   DBG("Version: %s\n\n", VERSION);
 #endif
-  radio.begin();
+  audioBegin();
   loadSettings();
-  rfAudio.begin();
   blinker.begin();
 
   // Invisible mode
@@ -61,11 +60,13 @@ void loop()
 
     if (encoder.turn())
     {
-      BEACON_PERIOD = BEACON_PERIOD + BEACON_ON_MS * encoder.dir();
-      if (BEACON_PERIOD <= BEACON_ON_MS)
-        BEACON_PERIOD = BEACON_ON_MS;
-      if (BEACON_PERIOD >= BEACON_PERIOD_MAX)
-        BEACON_PERIOD = BEACON_PERIOD_MAX;
+      int period = BEACON_PERIOD + BEACON_ON_MS * encoder.dir();
+      if (period <= BEACON_ON_MS)
+        period = BEACON_ON_MS;
+      if (period >= BEACON_PERIOD_MAX)
+        period = BEACON_PERIOD_MAX;
+
+      BEACON_PERIOD = period;
     }
 
     beacon.tick();
@@ -126,7 +127,7 @@ void loop()
       config.channel = channel = channels[channelIdx];
       applyChannel();
       markConfigEdited();
-      blinker.startEx(channelIdx + 1, 200, 200, 200, 200, rfAudio.isStreaming());
+      blinker.startEx(channelIdx + 1, 200, 200, 200, 200, isStreaming);
     }
     // Volume toggle when encoder turned
     else if (!isTx)
@@ -142,7 +143,7 @@ void loop()
         config.volume = volume = (uint8_t)new_volume;
         applyVolume();
         markConfigEdited();
-        blinker.startEx(1, 20, 20, 0, 200, rfAudio.isStreaming());
+        blinker.startEx(1, 20, 20, 0, 200, isStreaming);
       }
     }
   }
@@ -165,11 +166,12 @@ void loop()
       packet[1] = 'S';
       packet[2] = 'O';
       packet[3] = 'S';
-      rfAudio.sendMessage(packet);
+      sendMessage(packet);
+      blinker.startEx(1, 200, 200, 0, 0, false);
     }
   }
 
-  if (rfAudio.readMessage(receivedPacket))
+  if (readMessage(receivedPacket))
   {
     if (receivedPacket[0] == PROTOCOL_HEADER)
     {
@@ -227,9 +229,9 @@ void loop()
   if (PTT.press() && !encoder.pressing())
   {
     // Transmit if not receiving
-    if (!rfAudio.isStreaming() && !isTx && !pttLocked)
+    if (!isStreaming && !isTx && !pttLocked)
     {
-      rfAudio.transmit();
+      transmit();
       digitalWrite(LED_PIN, isInvisibleMode ? LOW : HIGH);
       isTx = true;
       DBG("Transmitting...\n");
@@ -241,23 +243,37 @@ void loop()
       if (isTx)
       {
         blinker.stop();
-        rfAudio.receive();
+        receive();
         isTx = false;
         DBG("Receiving...\n");
       }
     }
   }
-  // Stop Transmitting when PTT released
+
   if (PTT.release() && isTx && !pttLocked)
   {
-    blinker.stop();
-    rfAudio.receive();
-    isTx = false;
-    DBG("Receiving...\n");
+    releasePending = true;
+    releaseAt = now;
+  }
+
+  if (releasePending && isTx && !pttLocked)
+  {
+    if (now - releaseAt >= PTT_RELEASE_MS && !PTT.pressing())
+    {
+      releasePending = false;
+      blinker.stop();
+      receive();
+      isTx = false;
+      DBG("Receiving...\n");
+    }
+    else if (PTT.pressing())
+    {
+      releasePending = false;
+    }
   }
 
   // Blink LED when radio is waiting
-  if (now >= nextBlinkAt && !blinker.active() && !isTx && !rfAudio.isStreaming())
+  if (now >= nextBlinkAt && !blinker.active() && !isTx && !isStreaming)
   {
     bool isLow = isLowBattery(now);
     blinker.startEx(isLow ? 2 : 1, 100, 100, 200, 0, false);
@@ -265,16 +281,16 @@ void loop()
   }
 
   // Roger beep
-  if (rogerEnabled && prevStreaming && !rfAudio.isStreaming() && !rogerLock)
+  if (rogerEnabled && prevStreaming && !isStreaming && !rogerLock)
   {
     rogerLock = true;
     playRogerBeep();
   }
-  if (!prevStreaming && rfAudio.isStreaming())
+  if (!prevStreaming && isStreaming)
   {
     rogerLock = false;
   }
-  prevStreaming = rfAudio.isStreaming();
+  prevStreaming = isStreaming;
 
   blinker.tick();
   SOS.tick(now);

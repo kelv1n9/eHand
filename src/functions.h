@@ -1,10 +1,8 @@
-#include <RF24.h>
-#include <RF24Audio.h>
 #include "EncButton.h"
 #include <TimerFreeTone.h>
+#include "DataTransfer.h"
 #include <EEPROM.h>
 #include <Vcc.h>
-#include "userConfig.h"
 
 // #define DEBUG_eHand
 
@@ -31,8 +29,6 @@
 #define ENCODER_A_PIN 4
 #define ENCODER_B_PIN 3
 #define ENCODER_SWITCH_PIN 5
-#define CSN_PIN 8
-#define CE_PIN 7
 
 // CONSTANTS
 #define LOW_BATT_VOLT 3600
@@ -40,12 +36,13 @@
 #define BATT_SAMPLE_MS 20000
 #define LED_BLINK_MS 10000
 #define SAVE_DELAY_MS 10000
+#define PTT_RELEASE_MS 50
 
 // Beacon
-#define BEACON_ON_MS 250
+#define BEACON_ON_MS 500
 #define BEACON_TONE 500
 #define BEACON_PERIOD_MAX 5000
-uint16_t BEACON_PERIOD = 250;
+uint16_t BEACON_PERIOD = BEACON_ON_MS;
 
 // SOS
 #define SOS_FREQ 800
@@ -58,9 +55,6 @@ Vcc vcc(1);
 
 Button PTT(PTT_BUTTON_PIN);
 EncButton encoder(ENCODER_A_PIN, ENCODER_B_PIN, ENCODER_SWITCH_PIN);
-
-RF24 radio(CE_PIN, CSN_PIN);
-RF24Audio rfAudio(radio);
 
 struct Settings
 {
@@ -89,6 +83,9 @@ uint8_t maxVolume = 7;
 uint8_t dataRateIdx = 1;
 uint8_t txPowerIdx = 2;
 uint8_t receivedPacket[BUFFER_SIZE];
+
+bool releasePending;
+uint32_t releaseAt;
 
 enum BlinkState : uint8_t
 {
@@ -348,7 +345,7 @@ void applyTxPower()
 
 void applyVolume()
 {
-    rfAudio.setVolume(volume);
+    setVolume(volume);
     DBG("Volume: %u\n", volume);
 }
 
@@ -431,20 +428,20 @@ struct Beacon
 
     void startBurst()
     {
-        RF24Audio_setBeaconTone(BEACON_TONE);
-        RF24Audio_setBeaconMode(true);
-        rfAudio.transmit();
+        setBeaconTone(BEACON_TONE);
+        setBeaconMode(true);
+        transmit();
         isTx = true;
         phase = BURST;
         t0 = millis();
-        blinker.startEx(1, BEACON_ON_MS, BEACON_PERIOD, 0, 0, false);
+        // blinker.startEx(1, BEACON_ON_MS, BEACON_PERIOD - BEACON_ON_MS, 0, 0, false);
         DBG("Sending beacon...\n");
     }
 
     void stopBurst()
     {
-        rfAudio.receive();
-        RF24Audio_setBeaconMode(false);
+        receive();
+        setBeaconMode(false);
         isTx = false;
         phase = GAP;
         t0 = millis();
@@ -460,8 +457,8 @@ struct Beacon
 
     void exit()
     {
-        rfAudio.receive();
-        RF24Audio_setBeaconMode(false);
+        receive();
+        setBeaconMode(false);
         enabled = false;
         isTx = false;
         blinker.stop();
@@ -507,7 +504,7 @@ struct Parrot
     {
         enabled = !enabled;
         state = P_IDLE;
-        rfAudio.receive();
+        receive();
         blinker.startEx(5, 50, 50, 0, 0, false);
         DBG("Parrot %s\n", enabled ? "ON" : "OFF");
     }
@@ -519,7 +516,7 @@ struct Parrot
         switch (state)
         {
         case P_IDLE:
-            if (rfAudio.isStreaming())
+            if (isStreaming)
             {
                 t_on = now;
                 state = P_MEASURE;
@@ -529,7 +526,7 @@ struct Parrot
             break;
 
         case P_MEASURE:
-            if (!rfAudio.isStreaming())
+            if (!isStreaming)
             {
                 uint32_t dur = now - t_on;
                 DBG("[MEASURE] RX end: %lu ms, dur=%lu ms\n", now, dur);
@@ -553,7 +550,7 @@ struct Parrot
         case P_COOLDOWN:
             if (now >= t_on)
             {
-                rfAudio.transmit();
+                transmit();
                 t_play = now + t_dur;
                 state = P_PLAY;
                 digitalWrite(LED_PIN, HIGH);
@@ -564,7 +561,7 @@ struct Parrot
         case P_PLAY:
             if (now >= t_play)
             {
-                rfAudio.receive();
+                receive();
                 state = P_IDLE;
                 digitalWrite(LED_PIN, LOW);
                 DBG("[PLAY] TX end: %lu ms\n", now);
@@ -609,7 +606,7 @@ struct Scanner
             return;
         uint32_t now = millis();
 
-        if (rfAudio.isStreaming())
+        if (isStreaming)
         {
             if (millis() - t_last > 500)
             {
