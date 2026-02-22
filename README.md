@@ -3,7 +3,7 @@
 
 # 🎙️ eHand
 
-The project provides push-to-talk audio streaming, quick on-device controls with an encoder + PTT button, and several utility modes (scanner, beacon, parrot, SOS) designed for lightweight field use.
+The project is a lightweight handheld digital radio (walkie-talkie) with push-to-talk audio streaming, quick on-device controls via an encoder + PTT button, and several utility modes (scanner, beacon, parrot, SOS) for field use.
 
 ---
 
